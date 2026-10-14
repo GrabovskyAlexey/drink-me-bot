@@ -10,5 +10,6 @@
     <include file="liquibase/catalog/2.import_catalog.sql"/>
     <include file="liquibase/catalog/3.set_goods_essential.sql"/>
     <include file="liquibase/catalog/4.create_user_ingredient.sql"/>
+    <include file="liquibase/catalog/5.create_goods_category.sql"/>
 
 </databaseChangeLog>

@@ -40,3 +40,10 @@ Kotlin Style Guide, 4 пробела, один публичный класс н�
 - `.github/workflows/deploy.yml`: на каждый push в `master` — тесты → версия `vX.Y.Z` (major.minor из `version.txt`, patch — автоинкремент) → `docker build`/`push` в GHCR → `scripts/deploy-drinkmebot.sh` на сервере по SSH → git-тег и GitHub Release. Секреты GitHub: `VPS_SSH_HOST`, `VPS_SSH_PORT`, `SSH_USER`, `VPS_SSH_KEY`. Подробности — `docs/DEPLOY.md`.
 - Версия приложения задаётся CI через `-PappVersion` (локально `0.0.1-SNAPSHOT`) и пишется в лог при старте (`StartupInfo`). Jar — `build/libs/drinkmebot.jar`, `Dockerfile` копирует именно её.
 - Конфиг на сервере — `~/drinkmebot/.env` (образец `scripts/.env.server.example`), профиль `prod`, порт приложения по умолчанию 8092 на `127.0.0.1`.
+
+## Ингредиенты и подбор
+- Справочник коктейлей — Liquibase `liquibase/catalog/` (схема, импорт данных `runOnChange`, `is_essential`, `user_ingredient`, `goods_category`). Обязательность (`goods.is_essential`) меняем только новой миграцией. Читаем справочник через `NamedParameterJdbcTemplate` (таблицы с префиксом `drink_me_bot.`), пользовательские данные — через JPA (`UserIngredient`).
+- Локаль данных (`DataLocale`): en→us, Telegram `uk`→`ua`, остальные как есть; неизвестные — `us`.
+- `/ingredients` (`IngredientsFlow`): категории (`IngredientCategory`, таблица `goods_category`) → страница с ✅ → поиск. Callback-и несут вид (`V:<вид>:<стр>`, `T:<id>:<вид>:<стр>`), состояние хранит только поисковый запрос.
+- Тексты: `messages.properties` — английский по умолчанию (для неподдерживаемых языков), `messages_ru`/`messages_en`; шаблоны `step.ftl` — диспетчер (ru → `step_ru.ftl`, иначе `step_en.ftl`).
+

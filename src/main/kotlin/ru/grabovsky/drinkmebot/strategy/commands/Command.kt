@@ -10,5 +10,6 @@ enum class Command(
     val hidden: Boolean = false,
 ) {
     START("start", "🟢 Начать пользоваться ботом", "🟢 Start using the bot", 1),
+    INGREDIENTS("ingredients", "🧪 Мои ингредиенты", "🧪 My ingredients", 2),
     HELP("help", "❓ Помощь", "❓ Help", 99);
 }

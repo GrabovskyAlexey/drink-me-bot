@@ -26,10 +26,10 @@
 - [x] Тесты на Testcontainers (точное совпадение, 1–2 недостающих, мокктейль, необязательные, локали)
 
 ## 3. Ингредиенты пользователя (`feature/ingredients-flow`)
-- [ ] `UserIngredient` (entity, repository), `IngredientService`
-- [ ] Команда `/ingredients`, flow `INGREDIENTS`: категории по тегам → страницы с ✅
-- [ ] Поиск по названию, «Сбросить все»
-- [ ] Шаблоны и тексты, тесты
+- [x] `UserIngredient` (entity, repository), `IngredientService`
+- [x] Команда `/ingredients`, flow `INGREDIENTS`: 10 фиксированных категорий (`goods_category`) → страницы с ✅
+- [x] Поиск по названию, «Сбросить все»
+- [x] Шаблоны и тексты, тесты
 
 ## 4. Коктейли (`feature/cocktails-flow`)
 - [ ] Команда `/cocktails`, flow `COCKTAILS`: «Можно приготовить» / «Не хватает 1» / «Не хватает 2» с пагинацией
