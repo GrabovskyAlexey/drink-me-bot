@@ -33,3 +33,10 @@
 Kotlin Style Guide, 4 пробела, один публичный класс на файл, `val` и неизменяемые коллекции. Секреты не коммитим: переменные окружения, локально — `.env` и `application-local.yaml` (в `.gitignore`). Коммиты — на английском, в повелительном наклонении.
 - Шаблоны локализуются двумя файлами: `step.ftl` (ru, по умолчанию) и `step_en.ftl`. Тексты с пользовательскими данными — только `?html` и `FlowParseMode.HTML`.
 - Тексты кнопок и алертов — в `messages_{ru,en}.properties` (ключи `buttons.*`, `alerts.*`).
+
+## Ветки и деплой
+- Процесс: фича-ветка → `dev` → `master`. Ветки фич называем `feature/<название>`, релизные подготовки — `release_X.Y`.
+- `.github/workflows/ci.yml`: тесты на каждый pull request в `dev` и `master` и на push в `dev`.
+- `.github/workflows/deploy.yml`: на каждый push в `master` — тесты → версия `vX.Y.Z` (major.minor из `version.txt`, patch — автоинкремент) → `docker build`/`push` в GHCR → `scripts/deploy-drinkmebot.sh` на сервере по SSH → git-тег и GitHub Release. Секреты GitHub: `VPS_SSH_HOST`, `VPS_SSH_PORT`, `SSH_USER`, `VPS_SSH_KEY`. Подробности — `docs/DEPLOY.md`.
+- Версия приложения задаётся CI через `-PappVersion` (локально `0.0.1-SNAPSHOT`) и пишется в лог при старте (`StartupInfo`). Jar — `build/libs/drinkmebot.jar`, `Dockerfile` копирует именно её.
+- Конфиг на сервере — `~/drinkmebot/.env` (образец `scripts/.env.server.example`), профиль `prod`, порт приложения по умолчанию 8092 на `127.0.0.1`.
