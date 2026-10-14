@@ -5,6 +5,7 @@ import org.telegram.telegrambots.meta.api.objects.CallbackQuery
 import org.telegram.telegrambots.meta.api.objects.message.Message
 import ru.grabovsky.drinkmebot.model.IngredientCategory
 import ru.grabovsky.drinkmebot.model.IngredientItem
+import ru.grabovsky.drinkmebot.service.interfaces.DataLocaleService
 import ru.grabovsky.drinkmebot.service.interfaces.I18nService
 import ru.grabovsky.drinkmebot.service.interfaces.IngredientService
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.AnswerCallbackAction
@@ -30,7 +31,6 @@ import ru.grabovsky.drinkmebot.strategy.flow.core.support.PAGE_NOOP
 import ru.grabovsky.drinkmebot.strategy.flow.core.support.buildMessage
 import ru.grabovsky.drinkmebot.strategy.flow.core.support.openButton
 import ru.grabovsky.drinkmebot.strategy.flow.core.support.paginationButtons
-import ru.grabovsky.drinkmebot.util.DataLocale
 import java.util.Locale
 
 enum class IngredientsStep(override val key: String) : FlowStep {
@@ -58,6 +58,7 @@ data class IngredientsResetModel(val selected: Int)
 class IngredientsFlow(
     private val ingredients: IngredientService,
     private val i18n: I18nService,
+    private val dataLocale: DataLocaleService,
 ) : FlowHandler<IngredientsState> {
 
     override val key: FlowKey = FlowKeys.INGREDIENTS
@@ -195,7 +196,7 @@ class IngredientsFlow(
     }
 
     private fun listMessage(userId: Long, locale: Locale, view: String, requestedPage: Int, state: IngredientsState): FlowMessage {
-        val lang = DataLocale.of(locale)
+        val lang = dataLocale.resolve(userId, locale)
         val (title, items) = if (view == SEARCH_VIEW) {
             val query = state.query.orEmpty()
             i18n.i18n("ingredients.search_title", locale, null, query) to ingredients.search(userId, lang, query)
@@ -216,7 +217,7 @@ class IngredientsFlow(
 
     private fun itemButton(locale: Locale, item: IngredientItem, view: String, page: Int, row: Int) =
         FlowInlineButton(
-            i18n.i18n(if (item.selected) "buttons.ingredients.selected" else "buttons.ingredients.unselected", locale, null, item.name),
+            i18n.i18n(if (item.selected) "buttons.common.selected" else "buttons.common.unselected", locale, null, item.name),
             callback("T:${item.id}:$view:$page"), row = row,
         )
 

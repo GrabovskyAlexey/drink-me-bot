@@ -20,6 +20,11 @@ class DataLocaleTest : ShouldSpec({
         }
     }
 
+    should("have a flag for every supported locale") {
+        DataLocale.SUPPORTED_ORDERED.forEach { DataLocale.flag(it).isNotEmpty() shouldBe true }
+        DataLocale.flag("uk") shouldBe "🇬🇧"
+    }
+
     should("fall back to us for unsupported languages") {
         DataLocale.of(Locale.forLanguageTag("pl")) shouldBe "us"
     }

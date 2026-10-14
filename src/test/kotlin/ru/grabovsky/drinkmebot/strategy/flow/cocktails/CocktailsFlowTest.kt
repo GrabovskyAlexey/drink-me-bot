@@ -27,6 +27,7 @@ import ru.grabovsky.drinkmebot.strategy.flow.core.engine.EditMessageAction
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowContext
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowStartContext
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowStateHolder
+import ru.grabovsky.drinkmebot.strategy.flow.FakeDataLocaleService
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.SendMessageAction
 import java.util.Locale
 import org.telegram.telegrambots.meta.api.objects.User as TgUser
@@ -39,7 +40,7 @@ class CocktailsFlowTest : ShouldSpec({
         override fun i18n(code: String, locale: Locale, default: String?, vararg args: Any?) =
             if (args.isEmpty()) code else "$code(${args.joinToString(",")})"
     }
-    val flow = CocktailsFlow(suggestions, cards, ingredients, i18n)
+    val flow = CocktailsFlow(suggestions, cards, ingredients, i18n, FakeDataLocaleService())
     val ru = Locale.forLanguageTag("ru")
     val tgUser = mockk<TgUser> { every { id } returns 7L }
     val callback = mockk<CallbackQuery> { every { id } returns "cb1" }

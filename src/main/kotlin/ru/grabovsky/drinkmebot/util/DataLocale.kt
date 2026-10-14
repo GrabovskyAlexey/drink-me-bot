@@ -10,7 +10,18 @@ import java.util.Locale
 object DataLocale {
     const val DEFAULT = "us"
 
-    val SUPPORTED: Set<String> = setOf("ru", "ua", "uk", "us", "de", "es", "fr", "it")
+    /** Порядок показа в `/settings`. */
+    val SUPPORTED_ORDERED: List<String> = listOf("ru", "ua", "us", "uk", "de", "es", "fr", "it")
+
+    val SUPPORTED: Set<String> = SUPPORTED_ORDERED.toSet()
+
+    private val FLAGS = mapOf(
+        "ru" to "🇷🇺", "ua" to "🇺🇦", "us" to "🇺🇸", "uk" to "🇬🇧",
+        "de" to "🇩🇪", "es" to "🇪🇸", "fr" to "🇫🇷", "it" to "🇮🇹",
+    )
+
+    /** Флаг локали для кнопок выбора языка. */
+    fun flag(code: String): String = FLAGS.getValue(code)
 
     /** Локаль данных по языку интерфейса/Telegram; неизвестные языки получают английский ([DEFAULT]). */
     fun of(locale: Locale): String = when (val language = locale.language.lowercase()) {

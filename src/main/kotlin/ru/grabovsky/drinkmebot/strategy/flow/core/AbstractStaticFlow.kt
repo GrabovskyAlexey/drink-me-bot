@@ -4,6 +4,7 @@ import org.telegram.telegrambots.meta.api.objects.CallbackQuery
 import org.telegram.telegrambots.meta.api.objects.message.Message
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowContext
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowHandler
+import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowInlineButton
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowKey
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowResult
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowStartContext
@@ -19,6 +20,8 @@ abstract class AbstractStaticFlow(
     private val step: FlowStep,
     private val bindingKey: String,
     private val modelProvider: (FlowStartContext) -> Any?,
+    /** Кнопки под сообщением (например, переходы в другие flow); по умолчанию без кнопок. */
+    private val buttonsProvider: (FlowStartContext) -> List<FlowInlineButton> = { emptyList() },
 ) : FlowHandler<Unit> {
 
     override val payloadType: Class<Unit> = Unit::class.java
@@ -33,7 +36,8 @@ abstract class AbstractStaticFlow(
                     bindingKey = bindingKey,
                     message = key.buildMessage(
                         step = step,
-                        model = model
+                        model = model,
+                        inlineButtons = buttonsProvider(context),
                     )
                 )
             )

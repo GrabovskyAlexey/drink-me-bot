@@ -7,6 +7,7 @@ import ru.grabovsky.drinkmebot.model.CocktailCard
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailCardService
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailSuggestService
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailSuggestService.Companion.MAX_MISSING
+import ru.grabovsky.drinkmebot.service.interfaces.DataLocaleService
 import ru.grabovsky.drinkmebot.service.interfaces.I18nService
 import ru.grabovsky.drinkmebot.service.interfaces.IngredientService
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.AnswerCallbackAction
@@ -30,7 +31,6 @@ import ru.grabovsky.drinkmebot.strategy.flow.core.support.PAGE_NOOP
 import ru.grabovsky.drinkmebot.strategy.flow.core.support.buildMessage
 import ru.grabovsky.drinkmebot.strategy.flow.core.support.openButton
 import ru.grabovsky.drinkmebot.strategy.flow.core.support.paginationButtons
-import ru.grabovsky.drinkmebot.util.DataLocale
 import java.util.Locale
 
 enum class CocktailsStep(override val key: String) : FlowStep {
@@ -75,6 +75,7 @@ class CocktailsFlow(
     private val cards: CocktailCardService,
     private val ingredients: IngredientService,
     private val i18n: I18nService,
+    private val dataLocale: DataLocaleService,
 ) : FlowHandler<CocktailsState> {
 
     override val key: FlowKey = FlowKeys.COCKTAILS
@@ -119,7 +120,7 @@ class CocktailsFlow(
     }
 
     private fun mainMessage(userId: Long, locale: Locale): FlowMessage {
-        val counts = suggestions.counts(userId, DataLocale.of(locale))
+        val counts = suggestions.counts(userId, dataLocale.resolve(userId, locale))
         val ready = counts[0] ?: 0
         val missingOne = counts[1] ?: 0
         val missingTwo = counts[2] ?: 0
@@ -139,7 +140,7 @@ class CocktailsFlow(
 
     private fun listMessage(userId: Long, locale: Locale, missing: Int, requestedPage: Int): FlowMessage? {
         if (missing !in 0..MAX_MISSING) return null
-        val lang = DataLocale.of(locale)
+        val lang = dataLocale.resolve(userId, locale)
         val total = suggestions.counts(userId, lang)[missing] ?: 0
         val pages = ((total + PAGE_SIZE - 1) / PAGE_SIZE).coerceAtLeast(1)
         val page = requestedPage.coerceIn(0, pages - 1)
@@ -157,7 +158,7 @@ class CocktailsFlow(
 
     /** Карточка коктейля; кнопка «Назад» возвращает в тот же раздел на ту же страницу. Нет такого коктейля - возвращаем к разделу. */
     private fun cardMessage(userId: Long, locale: Locale, cocktailId: Int, missing: Int, page: Int): Pair<CocktailsStep, FlowMessage>? {
-        val card = cards.card(userId, DataLocale.of(locale), cocktailId)
+        val card = cards.card(userId, dataLocale.resolve(userId, locale), cocktailId)
             ?: return listMessage(userId, locale, missing, page)?.let { CocktailsStep.LIST to it }
         val buttons = listOf(
             FlowInlineButton(i18n.i18n("buttons.common.back", locale), callback("S:$missing:$page"), row = FlowInlineButton.LAST_ROW),
@@ -182,7 +183,7 @@ class CocktailsFlow(
     }
 
     private fun buyMessage(userId: Long, locale: Locale): FlowMessage {
-        val items = suggestions.whatToBuy(userId, DataLocale.of(locale)).map { CocktailsBuyItem(it.goods.name, it.unlocksCount) }
+        val items = suggestions.whatToBuy(userId, dataLocale.resolve(userId, locale)).map { CocktailsBuyItem(it.goods.name, it.unlocksCount) }
         return simpleMessage(CocktailsStep.BUY, CocktailsBuyModel(items), listOf(backButton(locale)))
     }
 

@@ -61,7 +61,10 @@ class FlowNavigationTest : ShouldSpec({
     }
     val suggestions = mockk<CocktailSuggestService> { every { counts(7L, "ru") } returns mapOf(0 to 1, 1 to 0, 2 to 0) }
     val engine = FlowEngine(
-        listOf(IngredientsFlow(ingredients, i18n), CocktailsFlow(suggestions, mockk<CocktailCardService>(), ingredients, i18n)),
+        listOf(
+            IngredientsFlow(ingredients, i18n, FakeDataLocaleService()),
+            CocktailsFlow(suggestions, mockk<CocktailCardService>(), ingredients, i18n, FakeDataLocaleService()),
+        ),
         stateService, JacksonFlowPayloadSerializer(jacksonObjectMapper()), executor,
     )
 

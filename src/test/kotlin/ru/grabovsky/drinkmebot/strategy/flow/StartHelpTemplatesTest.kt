@@ -28,11 +28,18 @@ class StartHelpTemplatesTest : ShouldSpec({
     }
 
     should("send start and help as html") {
-        val start = StartFlow().start(FlowStartContext(user, ru)).actions.single() as SendMessageAction
+        val start = StartFlow(EchoI18n).start(FlowStartContext(user, ru)).actions.single() as SendMessageAction
         val help = HelpFlow().start(FlowStartContext(user, ru)).actions.single() as SendMessageAction
 
         start.message.parseMode shouldBe FlowParseMode.HTML
         help.message.parseMode shouldBe FlowParseMode.HTML
+    }
+
+    should("offer buttons that open ingredients and cocktails in the same message") {
+        val start = StartFlow(EchoI18n).start(FlowStartContext(user, ru)).actions.single() as SendMessageAction
+
+        start.message.inlineButtons.map { it.payload.flow to it.payload.data } shouldBe
+            listOf("INGREDIENTS" to "OPEN", "COCKTAILS" to "OPEN")
     }
 
     should("escape the user name in the greeting so that special characters do not break the message") {
@@ -42,11 +49,11 @@ class StartHelpTemplatesTest : ShouldSpec({
     }
 
     should("greet without a name") {
-        renderer.render(FlowKeys.START, "main", en, null) shouldContain "Welcome!"
+        renderer.render(FlowKeys.START, "main", en, null) shouldContain "Hi!"
     }
 
     should("render help in both languages") {
         renderer.render(FlowKeys.HELP, "main", ru, null).shouldNotBeBlank()
-        renderer.render(FlowKeys.HELP, "main", en, null) shouldContain "Available commands"
+        renderer.render(FlowKeys.HELP, "main", en, null) shouldContain "How it works"
     }
 })

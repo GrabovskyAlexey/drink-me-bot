@@ -3,6 +3,7 @@ package ru.grabovsky.drinkmebot.config
 import io.kotest.core.spec.style.ShouldSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import ru.grabovsky.drinkmebot.model.IngredientCategory
+import ru.grabovsky.drinkmebot.util.DataLocale
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -39,7 +40,8 @@ class MessagesConsistencyTest : ShouldSpec({
 
     should("define the keys that flows build dynamically") {
         val dynamic = listOf("ready", "missing1", "missing2").flatMap { listOf("buttons.cocktails.$it", "cocktails.section.$it") }
-        (dynamic - ru.stringPropertyNames()).shouldBeEmpty()
+        val languages = DataLocale.SUPPORTED.map { "settings.language.$it" }
+        ((dynamic + languages + listOf("buttons.settings.clean.on", "buttons.settings.clean.off")) - ru.stringPropertyNames()).shouldBeEmpty()
     }
 
     should("define every message key used in the source code") {
