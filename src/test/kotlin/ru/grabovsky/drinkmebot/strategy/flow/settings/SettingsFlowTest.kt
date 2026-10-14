@@ -61,6 +61,25 @@ class SettingsFlowTest : ShouldSpec({
             listOf("🇷🇺", "🇺🇦", "🇺🇸", "🇬🇧", "🇩🇪", "🇪🇸", "🇫🇷", "🇮🇹")
     }
 
+    should("offer to return to the Telegram language only after a language is chosen") {
+        dataLocale.choose(7L, "de")
+
+        val buttons = startMessage().inlineButtons
+
+        buttons.map { it.payload.data }.takeLast(3) shouldContainExactly listOf("AUTO", "CLEAN", "CLOSE")
+        buttons.single { it.payload.data == "AUTO" }.row shouldBe 2
+        buttons.single { it.payload.data == "CLEAN" }.row shouldBe 3
+    }
+
+    should("reset the chosen language and redraw in the Telegram language") {
+        dataLocale.choose(7L, "de")
+
+        val result = flow.onCallback(context(en), callback, "AUTO")!!
+
+        dataLocale.chosen(7L).shouldBeNull()
+        (result.actions.first() as EditMessageAction).message.inlineButtons.none { it.payload.data == "AUTO" } shouldBe true
+    }
+
     should("mark the language detected from Telegram while nothing is chosen") {
         startMessage(ru).inlineButtons.filter { it.text.startsWith("✅") }.map { it.payload.data } shouldContainExactly listOf("SL:ru")
         startMessage(en).inlineButtons.filter { it.text.startsWith("✅") }.map { it.payload.data } shouldContainExactly listOf("SL:us")
