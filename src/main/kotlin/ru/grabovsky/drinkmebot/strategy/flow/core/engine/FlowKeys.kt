@@ -6,4 +6,5 @@ object FlowKeys {
     val INGREDIENTS = FlowKey("INGREDIENTS")
     val COCKTAILS = FlowKey("COCKTAILS")
     val SETTINGS = FlowKey("SETTINGS")
+    val ADMIN = FlowKey("ADMIN")
 }

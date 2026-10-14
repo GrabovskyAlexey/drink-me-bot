@@ -1,0 +1,60 @@
+package ru.grabovsky.drinkmebot.service
+
+import org.springframework.stereotype.Service
+import ru.grabovsky.drinkmebot.model.AudienceStats
+import ru.grabovsky.drinkmebot.model.STATS_ZONE
+import ru.grabovsky.drinkmebot.model.StatsSnapshot
+import ru.grabovsky.drinkmebot.model.WeekStats
+import ru.grabovsky.drinkmebot.repository.StatsRepository
+import ru.grabovsky.drinkmebot.service.interfaces.StatsService
+import java.time.DayOfWeek
+import java.time.Instant
+import java.time.LocalDate
+import java.time.temporal.TemporalAdjusters
+
+@Service
+class StatsServiceImpl(
+    private val stats: StatsRepository,
+) : StatsService {
+
+    override fun snapshot(now: Instant): StatsSnapshot {
+        val today = now.atZone(STATS_ZONE).toLocalDate()
+        fun since(days: Int) = today.minusDays(days - 1L)
+        fun start(day: LocalDate) = day.atStartOfDay(STATS_ZONE).toInstant()
+
+        val audience = AudienceStats(
+            total = stats.countUsers(),
+            new1 = stats.countUsersCreatedSince(start(since(1))),
+            new7 = stats.countUsersCreatedSince(start(since(7))),
+            new30 = stats.countUsersCreatedSince(start(since(30))),
+            active1 = stats.countActiveSince(since(1)),
+            active7 = stats.countActiveSince(since(7)),
+            active30 = stats.countActiveSince(since(30)),
+        )
+
+        val currentMonday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        val firstMonday = currentMonday.minusWeeks(StatsService.WEEKS - 1L)
+        val newUsers = stats.newUsersByWeek(start(firstMonday))
+        val active = stats.activeUsersByWeek(firstMonday)
+        val weeks = (0 until StatsService.WEEKS).map { index ->
+            val monday = firstMonday.plusWeeks(index.toLong())
+            WeekStats(monday, newUsers[monday] ?: 0, active[monday] ?: 0)
+        }
+        return StatsSnapshot(
+            audience = audience,
+            ingredients = stats.ingredients(),
+            cocktailViews = stats.countCocktailViews(),
+            popularIngredients = stats.popularIngredients(StatsService.TOP),
+            popularCocktails = stats.popularCocktails(StatsService.TOP),
+            weeks = weeks,
+        )
+    }
+
+    override fun recordActivity(userId: Long, previousActionAt: Instant?, now: Instant) {
+        val today = now.atZone(STATS_ZONE).toLocalDate()
+        if (previousActionAt != null && previousActionAt.atZone(STATS_ZONE).toLocalDate() == today) return
+        stats.touchActivity(userId, today)
+    }
+
+    override fun recordCocktailView(cocktailId: Int) = stats.addCocktailView(cocktailId)
+}
