@@ -4,6 +4,7 @@
 /ingredients — my ingredients
 /cocktails — what to make
 /settings — settings
+/deleteme — download or delete my data
 /help — this help
 
 <b>How it works</b>

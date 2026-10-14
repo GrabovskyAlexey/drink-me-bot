@@ -9,7 +9,7 @@ import io.kotest.matchers.string.shouldNotBeBlank
 class CommandMenuTest : ShouldSpec({
     should("list the commands of the bot in menu order") {
         Command.entries.filter { !it.hidden }.sortedBy { it.order }.map { it.command } shouldContainExactly
-            listOf("start", "ingredients", "cocktails", "settings", "help")
+            listOf("start", "ingredients", "cocktails", "settings", "deleteme", "help")
     }
 
     should("have unique command names and orders") {
