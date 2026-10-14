@@ -11,5 +11,6 @@
     <include file="liquibase/catalog/3.set_goods_essential.sql"/>
     <include file="liquibase/catalog/4.create_user_ingredient.sql"/>
     <include file="liquibase/catalog/5.create_goods_category.sql"/>
+    <include file="liquibase/catalog/6.goods_not_essential_by_default.sql"/>
 
 </databaseChangeLog>
