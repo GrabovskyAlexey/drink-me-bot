@@ -7,7 +7,7 @@ fun FlowKey.buildMessage(
     model: Any? = null,
     inlineButtons: List<FlowInlineButton> = emptyList(),
     replyButtons: List<FlowReplyButton> = emptyList(),
-    parseMode: FlowParseMode = FlowParseMode.MARKDOWN,
+    parseMode: FlowParseMode = FlowParseMode.HTML,
     autoDeleteAfterSeconds: Int? = null,
 ): FlowMessage = FlowMessage(
     flowKey = this,

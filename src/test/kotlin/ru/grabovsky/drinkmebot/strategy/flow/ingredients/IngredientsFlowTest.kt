@@ -18,7 +18,9 @@ import ru.grabovsky.drinkmebot.model.IngredientCategory
 import ru.grabovsky.drinkmebot.model.IngredientItem
 import ru.grabovsky.drinkmebot.service.interfaces.I18nService
 import ru.grabovsky.drinkmebot.service.interfaces.IngredientService
+import org.telegram.telegrambots.meta.api.objects.message.MaybeInaccessibleMessage
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.AnswerCallbackAction
+import ru.grabovsky.drinkmebot.strategy.flow.core.engine.BindMessageAction
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.DeleteMessageAction
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.DeleteMessageIdAction
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.EditMessageAction
@@ -68,6 +70,24 @@ class IngredientsFlowTest : ShouldSpec({
         )
         message.inlineButtons.map { it.payload.data } shouldContain "SEARCH"
         message.inlineButtons.map { it.payload.data } shouldContain "RESET"
+        message.inlineButtons.first { it.payload.data == "OPEN" }.payload.flow shouldBe "COCKTAILS"
+    }
+
+    should("not send anything when started from another flow") {
+        flow.start(FlowStartContext(tgUser, ru, args = "OPEN")).actions shouldHaveSize 0
+    }
+
+    should("take over the message of the pressed button when opened from another flow") {
+        val fromOtherFlow = mockk<CallbackQuery> {
+            every { id } returns "cb2"
+            every { message } returns mockk<MaybeInaccessibleMessage> { every { messageId } returns 77 }
+        }
+
+        val result = flow.onCallback(context(IngredientsStep.LIST), fromOtherFlow, "OPEN")!!
+
+        result.stepKey shouldBe "main"
+        result.actions[0] shouldBe BindMessageAction(IngredientsFlow.MAIN_BINDING, 77)
+        (result.actions[1] as EditMessageAction).message.model shouldBe IngredientsMainModel(3)
     }
 
     should("open a category with the user marks and paginate it") {

@@ -37,6 +37,11 @@ class MessagesConsistencyTest : ShouldSpec({
         missing.shouldBeEmpty()
     }
 
+    should("define the keys that flows build dynamically") {
+        val dynamic = listOf("ready", "missing1", "missing2").flatMap { listOf("buttons.cocktails.$it", "cocktails.section.$it") }
+        (dynamic - ru.stringPropertyNames()).shouldBeEmpty()
+    }
+
     should("define every message key used in the source code") {
         val keyPattern = Regex(""""((?:buttons|alerts|unit|notices)\.[a-z_]+(?:\.[a-z_]+)*)"""")
         val used = Files.walk(Path.of("src/main/kotlin")).use { stream ->

@@ -8,6 +8,7 @@ import ru.grabovsky.drinkmebot.model.IngredientItem
 import ru.grabovsky.drinkmebot.service.interfaces.I18nService
 import ru.grabovsky.drinkmebot.service.interfaces.IngredientService
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.AnswerCallbackAction
+import ru.grabovsky.drinkmebot.strategy.flow.core.engine.BindMessageAction
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.DeleteMessageAction
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.DeleteMessageIdAction
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.EditMessageAction
@@ -24,7 +25,11 @@ import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowResult
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowStartContext
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowStep
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.SendMessageAction
+import ru.grabovsky.drinkmebot.strategy.flow.core.support.OPEN
+import ru.grabovsky.drinkmebot.strategy.flow.core.support.PAGE_NOOP
 import ru.grabovsky.drinkmebot.strategy.flow.core.support.buildMessage
+import ru.grabovsky.drinkmebot.strategy.flow.core.support.openButton
+import ru.grabovsky.drinkmebot.strategy.flow.core.support.paginationButtons
 import ru.grabovsky.drinkmebot.util.DataLocale
 import java.util.Locale
 
@@ -58,10 +63,11 @@ class IngredientsFlow(
     override val key: FlowKey = FlowKeys.INGREDIENTS
     override val payloadType: Class<IngredientsState> = IngredientsState::class.java
 
+    /** С аргументом [OPEN] (переход из другого flow) ничего не отправляет: сообщение привяжет `onCallback`. */
     override fun start(context: FlowStartContext): FlowResult<IngredientsState> =
         FlowResult(
             IngredientsStep.MAIN.key, IngredientsState(),
-            listOf(SendMessageAction(MAIN_BINDING, mainMessage(context.user.id, context.locale))),
+            if (context.args == OPEN) emptyList() else listOf(SendMessageAction(MAIN_BINDING, mainMessage(context.user.id, context.locale))),
         )
 
     override fun onMessage(context: FlowContext<IngredientsState>, message: Message): FlowResult<IngredientsState>? {
@@ -88,6 +94,15 @@ class IngredientsFlow(
         val answer = AnswerCallbackAction(callbackQuery.id)
         val parts = data.split(':')
         return when (parts[0]) {
+            OPEN -> {
+                val messageId = callbackQuery.message?.messageId ?: return null
+                result(
+                    IngredientsStep.MAIN, state,
+                    BindMessageAction(MAIN_BINDING, messageId),
+                    EditMessageAction(MAIN_BINDING, mainMessage(userId, locale)),
+                    answer = answer,
+                )
+            }
             "MAIN", "M" -> result(
                 IngredientsStep.MAIN, state,
                 EditMessageAction(MAIN_BINDING, mainMessage(userId, locale, parts.getOrNull(1)?.toIntOrNull() ?: 0)),
@@ -110,7 +125,7 @@ class IngredientsFlow(
                 result(IngredientsStep.MAIN, IngredientsState(), EditMessageAction(MAIN_BINDING, mainMessage(userId, locale)), answer)
             }
             "CLOSE" -> FlowResult(IngredientsStep.MAIN.key, state, listOf(DeleteMessageAction(MAIN_BINDING), answer), completed = true)
-            "NOOP" -> result(IngredientsStep.valueOf(context.state.stepKey), state, answer = answer)
+            PAGE_NOOP -> result(IngredientsStep.valueOf(context.state.stepKey), state, answer = answer)
             else -> null
         }
     }
@@ -170,9 +185,10 @@ class IngredientsFlow(
                 i18n.i18n("buttons.ingredients.category", locale, null, label, summary.selected, summary.total),
                 callback("V:${summary.category.name}:0"), row = index,
             )
-        } + navigationButtons(locale, page, pages, CATEGORY_PAGE_SIZE) { mainCallback(it) } + listOf(
+        } + key.paginationButtons(i18n, locale, page, pages, CATEGORY_PAGE_SIZE) { mainCallback(it) } + listOf(
             FlowInlineButton(i18n.i18n("buttons.ingredients.search", locale), callback("SEARCH"), row = ACTIONS_ROW, col = 0),
             FlowInlineButton(i18n.i18n("buttons.ingredients.reset", locale), callback("RESET"), row = ACTIONS_ROW, col = 1),
+            FlowKeys.COCKTAILS.openButton(i18n.i18n("buttons.ingredients.to_cocktails", locale), row = COCKTAILS_ROW),
             FlowInlineButton(i18n.i18n("buttons.common.close", locale), callback("CLOSE"), row = FlowInlineButton.LAST_ROW),
         )
         return simpleMessage(IngredientsStep.MAIN, IngredientsMainModel(categories.sumOf { it.selected }), buttons)
@@ -192,7 +208,7 @@ class IngredientsFlow(
         val pageItems = items.drop(page * PAGE_SIZE).take(PAGE_SIZE)
 
         val buttons = pageItems.mapIndexed { index, item -> itemButton(locale, item, view, page, index) } +
-            navigationButtons(locale, page, pages, PAGE_SIZE) { "V:$view:$it" } +
+            key.paginationButtons(i18n, locale, page, pages, PAGE_SIZE) { "V:$view:$it" } +
             backButton(locale, mainCallback(mainPageOf(view)))
         val model = IngredientsListModel(title, items.count { it.selected }, items.size, page + 1, pages, items.isEmpty())
         return simpleMessage(IngredientsStep.LIST, model, buttons)
@@ -203,18 +219,6 @@ class IngredientsFlow(
             i18n.i18n(if (item.selected) "buttons.ingredients.selected" else "buttons.ingredients.unselected", locale, null, item.name),
             callback("T:${item.id}:$view:$page"), row = row,
         )
-
-    /** Кнопки «назад / страница / вперёд» в ряду [row]; [target] строит callback для номера страницы. */
-    private fun navigationButtons(locale: Locale, page: Int, pages: Int, row: Int, target: (Int) -> String): List<FlowInlineButton> {
-        if (pages <= 1) return emptyList()
-        return listOfNotNull(
-            FlowInlineButton(i18n.i18n("buttons.ingredients.prev", locale), callback(target(page - 1)), row = row, col = 0)
-                .takeIf { page > 0 },
-            FlowInlineButton(i18n.i18n("buttons.ingredients.page", locale, null, page + 1, pages), callback("NOOP"), row = row, col = 1),
-            FlowInlineButton(i18n.i18n("buttons.ingredients.next", locale), callback(target(page + 1)), row = row, col = 2)
-                .takeIf { page < pages - 1 },
-        )
-    }
 
     private fun mainCallback(page: Int) = "M:$page"
 
@@ -246,5 +250,6 @@ class IngredientsFlow(
         const val PAGE_SIZE = 10
         const val CATEGORY_PAGE_SIZE = 5
         private const val ACTIONS_ROW = 50
+        private const val COCKTAILS_ROW = 51
     }
 }
