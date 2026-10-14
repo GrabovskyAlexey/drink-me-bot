@@ -33,3 +33,21 @@
 Kotlin Style Guide, 4 пробела, один публичный класс на файл, `val` и неизменяемые коллекции. Секреты не коммитим: переменные окружения, локально — `.env` и `application-local.yaml` (в `.gitignore`). Коммиты — на английском, в повелительном наклонении.
 - Шаблоны локализуются двумя файлами: `step.ftl` (ru, по умолчанию) и `step_en.ftl`. Тексты с пользовательскими данными — только `?html` и `FlowParseMode.HTML`.
 - Тексты кнопок и алертов — в `messages_{ru,en}.properties` (ключи `buttons.*`, `alerts.*`).
+
+## Ветки и деплой
+- Процесс: фича-ветка → `dev` → `master`. Ветки фич называем `feature/<название>`, релизные подготовки — `release_X.Y`.
+- `.github/workflows/ci.yml`: тесты на каждый pull request в `dev` и `master` и на push в `dev`.
+- `.github/workflows/deploy.yml`: на каждый push в `master` — тесты → версия `vX.Y.Z` (major.minor из `version.txt`, patch — автоинкремент) → `docker build`/`push` в GHCR → `scripts/deploy-drinkmebot.sh` на сервере по SSH → git-тег и GitHub Release. Секреты GitHub: `VPS_SSH_HOST`, `VPS_SSH_PORT`, `SSH_USER`, `VPS_SSH_KEY`. Подробности — `docs/DEPLOY.md`.
+- Версия приложения задаётся CI через `-PappVersion` (локально `0.0.1-SNAPSHOT`) и пишется в лог при старте (`StartupInfo`). Jar — `build/libs/drinkmebot.jar`, `Dockerfile` копирует именно её.
+- Конфиг на сервере — `~/drinkmebot/.env` (образец `scripts/.env.server.example`), профиль `prod`, порт приложения по умолчанию 8092 на `127.0.0.1`.
+
+## Ингредиенты и подбор
+- Справочник коктейлей — Liquibase `liquibase/catalog/` (схема, импорт данных `runOnChange`, `is_essential`, `user_ingredient`, `goods_category`). Обязательность (`goods.is_essential`) меняем только новой миграцией. Читаем справочник через `NamedParameterJdbcTemplate` (таблицы с префиксом `drink_me_bot.`), пользовательские данные — через JPA (`UserIngredient`).
+- Локаль данных (`DataLocale`): en→us, Telegram `uk`→`ua`, остальные как есть; неизвестные — `us`.
+- `/ingredients` (`IngredientsFlow`): категории (`IngredientCategory`, таблица `goods_category`) → страница с ✅ → поиск. Callback-и несут вид (`V:<вид>:<стр>`, `T:<id>:<вид>:<стр>`), состояние хранит только поисковый запрос.
+- Тексты: `messages.properties` — английский по умолчанию (для неподдерживаемых языков), `messages_ru`/`messages_en`; шаблоны `step.ftl` — диспетчер (ru → `step_ru.ftl`, иначе `step_en.ftl`).
+- `/cocktails` (`CocktailsFlow`): разделы «можно / не хватает 1 / не хватает 2» (по 8 коктейлей на странице) → карточка (`CocktailCardService`), «что купить». Всё в одном перерисовываемом сообщении; состояния нет, callback-и: `M`, `S:<не хватает>:<стр>`, `C:<id>:<не хватает>:<стр>`, `B`. В карточке обязательные ингредиенты помечены ✅/❌, необязательные — •. Пагинация — `paginationButtons` (`flow/core/support`).
+- Разметка сообщений — только HTML (`FlowParseMode.HTML` по умолчанию в `FlowMessage` и `buildMessage`): все подстановки данных в шаблонах через `?html`, форматирование `<b>`, `<i>`, `<code>`. Markdown не используем: его экранирование хрупко (`_`, `*`, `.`, `-` в названиях ломают сообщение).
+- `/settings` (`SettingsFlow`): язык бота — 8 флагов прямо на главном экране (`SL:<код>`) и автоудаление (`cleanChat`). Выбор хранится в `UserSettings.cocktailLang` (`null` = по языку Telegram) и задаёт сразу всё: язык коктейлей (`DataLocaleService.resolve`) и язык интерфейса (`LocaleUtils.interfaceLocale`: ru для `ru`, en для остальных). Полный перевод интерфейса на остальные языки — в бэклоге.
+- `/start`: кнопки «Мои ингредиенты» / «Что приготовить» открывают соответствующий flow в том же сообщении (`openButton`, `BindMessageAction`, аргумент `OPEN`).
+
