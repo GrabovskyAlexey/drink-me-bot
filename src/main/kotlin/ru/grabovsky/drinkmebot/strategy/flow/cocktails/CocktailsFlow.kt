@@ -10,6 +10,7 @@ import ru.grabovsky.drinkmebot.service.interfaces.CocktailSuggestService.Compani
 import ru.grabovsky.drinkmebot.service.interfaces.DataLocaleService
 import ru.grabovsky.drinkmebot.service.interfaces.I18nService
 import ru.grabovsky.drinkmebot.service.interfaces.IngredientService
+import ru.grabovsky.drinkmebot.service.interfaces.StatsService
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.AnswerCallbackAction
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.BindMessageAction
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.DeleteMessageAction
@@ -76,6 +77,7 @@ class CocktailsFlow(
     private val ingredients: IngredientService,
     private val i18n: I18nService,
     private val dataLocale: DataLocaleService,
+    private val stats: StatsService,
 ) : FlowHandler<CocktailsState> {
 
     override val key: FlowKey = FlowKeys.COCKTAILS
@@ -160,6 +162,8 @@ class CocktailsFlow(
     private fun cardMessage(userId: Long, locale: Locale, cocktailId: Int, missing: Int, page: Int): Pair<CocktailsStep, FlowMessage>? {
         val card = cards.card(userId, dataLocale.resolve(userId, locale), cocktailId)
             ?: return listMessage(userId, locale, missing, page)?.let { CocktailsStep.LIST to it }
+        // Счётчик просмотров вторичен: сбой статистики не должен ломать показ карточки
+        runCatching { stats.recordCocktailView(cocktailId) }
         val buttons = listOf(
             FlowInlineButton(i18n.i18n("buttons.common.back", locale), callback("S:$missing:$page"), row = FlowInlineButton.LAST_ROW),
         )

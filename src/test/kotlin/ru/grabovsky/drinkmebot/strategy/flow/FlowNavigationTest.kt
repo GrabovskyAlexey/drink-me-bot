@@ -13,6 +13,7 @@ import ru.grabovsky.drinkmebot.service.interfaces.CocktailCardService
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailSuggestService
 import ru.grabovsky.drinkmebot.service.interfaces.I18nService
 import ru.grabovsky.drinkmebot.service.interfaces.IngredientService
+import ru.grabovsky.drinkmebot.service.interfaces.StatsService
 import ru.grabovsky.drinkmebot.strategy.flow.cocktails.CocktailsFlow
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.BindMessageAction
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.EditMessageAction
@@ -63,7 +64,7 @@ class FlowNavigationTest : ShouldSpec({
     val engine = FlowEngine(
         listOf(
             IngredientsFlow(ingredients, i18n, FakeDataLocaleService()),
-            CocktailsFlow(suggestions, mockk<CocktailCardService>(), ingredients, i18n, FakeDataLocaleService()),
+            CocktailsFlow(suggestions, mockk<CocktailCardService>(), ingredients, i18n, FakeDataLocaleService(), mockk<StatsService>(relaxed = true)),
         ),
         stateService, JacksonFlowPayloadSerializer(jacksonObjectMapper()), executor,
     )

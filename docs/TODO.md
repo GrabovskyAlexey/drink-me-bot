@@ -47,8 +47,8 @@
 - [x] `./gradlew build` зелёный; `bootJar -PappVersion=0.1.0` (в `build-info` версия 0.1.0), `docker build` проходит
 - [x] Миграции на пустой БД как на сервере (схема создана заранее, `currentSchema=drink_me_bot`): все changeset применяются, `databasechangelog` и таблицы только в `drink_me_bot`, в `public` пусто
 - [ ] Ручной прогон в Telegram (сценарий ниже)
-- [ ] `feature/release_0.1` → `dev` (PR, зелёный `Build and test`)
-- [ ] `dev` → `master` (PR), деплой `v0.1.0`, проверка на сервере (`docs/DEPLOY.md`, раздел 4)
+- [x] `feature/release_0.1` → `dev` (PR, зелёный `Build and test`)
+- [x] `dev` → `master` (PR), деплой `v0.1.0`, проверка на сервере (`docs/DEPLOY.md`, раздел 4)
 
 ### Сценарий ручного прогона
 1. `/start`: приветствие, кнопки «Мои ингредиенты» / «Что приготовить» открывают экран в том же сообщении.

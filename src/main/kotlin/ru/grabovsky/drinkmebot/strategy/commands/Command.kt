@@ -13,5 +13,7 @@ enum class Command(
     INGREDIENTS("ingredients", "🧪 Мои ингредиенты", "🧪 My ingredients", 2),
     COCKTAILS("cocktails", "🍸 Что приготовить", "🍸 What to make", 3),
     SETTINGS("settings", "⚙️ Настройки", "⚙️ Settings", 80),
+    DELETE_ME("deleteme", "🗑 Удалить мои данные", "🗑 Delete my data", 85),
+    ADMIN("admin", "📊 Статистика", "📊 Statistics", 90, hidden = true),
     HELP("help", "❓ Помощь", "❓ Help", 99);
 }

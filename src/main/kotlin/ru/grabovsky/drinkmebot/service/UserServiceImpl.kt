@@ -6,6 +6,7 @@ import ru.grabovsky.drinkmebot.entity.User
 import ru.grabovsky.drinkmebot.entity.UserProfile
 import ru.grabovsky.drinkmebot.mapper.UserMapper
 import ru.grabovsky.drinkmebot.repository.UserRepository
+import ru.grabovsky.drinkmebot.service.interfaces.StatsService
 import ru.grabovsky.drinkmebot.service.interfaces.UserService
 import java.time.Instant
 import org.telegram.telegrambots.meta.api.objects.User as TgUser
@@ -13,6 +14,7 @@ import org.telegram.telegrambots.meta.api.objects.User as TgUser
 @Service
 class UserServiceImpl(
     private val userRepository: UserRepository,
+    private val statsService: StatsService,
 ) : UserService {
 
     override fun createOrUpdateUser(user: TgUser): User {
@@ -24,12 +26,13 @@ class UserServiceImpl(
     private fun updateUser(entity: User, user: TgUser): User {
         val profile = entity.profile ?: UserProfile(user = entity).also { entity.profile = it }
         profile.isBlocked = false
+        val previousActionAt = entity.lastActionAt
         entity.firstName = user.firstName
         entity.lastName = user.lastName
         entity.userName = user.userName
         entity.language = user.languageCode
         entity.lastActionAt = Instant.now()
-        return userRepository.saveAndFlush(entity)
+        return userRepository.saveAndFlush(entity).also { statsService.recordActivity(it.userId, previousActionAt) }
     }
 
     private fun createNewUser(userFromTelegram: User): User {
@@ -40,7 +43,7 @@ class UserServiceImpl(
             lastActionAt = Instant.now()
             profile = UserProfile(user = this)
         }
-        return userRepository.saveAndFlush(userFromTelegram)
+        return userRepository.saveAndFlush(userFromTelegram).also { statsService.recordActivity(it.userId, null) }
     }
 
     override fun saveUser(user: User) {
