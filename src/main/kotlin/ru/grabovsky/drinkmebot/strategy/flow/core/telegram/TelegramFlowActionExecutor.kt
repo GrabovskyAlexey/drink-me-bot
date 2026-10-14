@@ -85,6 +85,8 @@ class TelegramFlowActionExecutor(
                     scheduleDeletion(user.id, messageId, action.message)
                 }
 
+                is BindMessageAction -> bind(replacements, removed, action.bindingKey, action.messageId)
+
                 is DeleteMessageAction -> {
                     val messageId = replacements[action.bindingKey] ?: currentBindings[action.bindingKey]
                         ?: return@forEach

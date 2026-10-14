@@ -6,7 +6,7 @@ data class FlowMessage(
     val model: Any? = null,
     val inlineButtons: List<FlowInlineButton> = emptyList(),
     val replyButtons: List<FlowReplyButton> = emptyList(),
-    val parseMode: FlowParseMode = FlowParseMode.MARKDOWN,
+    val parseMode: FlowParseMode = FlowParseMode.HTML,
     val replyToMessageId: Int? = null,
     /** Убрать reply-клавиатуру, показанную ранее (используется, если нет своих кнопок). */
     val removeReplyKeyboard: Boolean = false,

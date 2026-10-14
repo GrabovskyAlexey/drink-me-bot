@@ -14,6 +14,15 @@ data class EditMessageAction(
     val message: FlowMessage,
 ) : FlowAction
 
+/**
+ * Привязывает уже существующее сообщение (например, то, в котором нажали кнопку) к ключу flow: последующие
+ * [EditMessageAction] правят именно его. Так flow «подхватывает» сообщение другого flow при переходе по кнопке.
+ */
+data class BindMessageAction(
+    override val bindingKey: String,
+    val messageId: Int,
+) : FlowAction
+
 data class DeleteMessageAction(
     override val bindingKey: String,
 ) : FlowAction

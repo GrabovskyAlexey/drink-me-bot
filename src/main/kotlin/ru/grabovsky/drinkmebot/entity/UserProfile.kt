@@ -33,4 +33,6 @@ data class UserProfile(
 data class UserSettings(
     /** Удалять служебные сообщения: команды в личке и временные подтверждения бота. */
     var cleanChat: Boolean = true,
+    /** Язык коктейлей (код локали данных, см. `DataLocale.SUPPORTED`); `null` - определять по языку Telegram. */
+    var cocktailLang: String? = null,
 )
