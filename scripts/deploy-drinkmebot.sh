@@ -20,7 +20,7 @@ IMAGE="${IMAGE:-${IMAGE_REPO}:${TAG}}"
 CONTAINER_NAME="${CONTAINER_NAME:-drinkmebot}"
 ENV_FILE="${ENV_FILE:-$HOME/drinkmebot/.env}"
 LOG_DIR="${LOG_DIR:-$HOME/drinkmebot/logs}"
-START_TIMEOUT="${START_TIMEOUT:-90}"
+START_TIMEOUT="${START_TIMEOUT:-180}"
 
 if [ ! -f "$ENV_FILE" ]; then
   echo "Нет файла окружения $ENV_FILE (см. docs/DEPLOY.md)" >&2

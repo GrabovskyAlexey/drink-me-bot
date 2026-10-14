@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Справочник коктейлей и ингредиенты пользователей -->
+    <include file="liquibase/catalog/1.create_catalog_tables.sql"/>
+    <include file="liquibase/catalog/2.import_catalog.sql"/>
+    <include file="liquibase/catalog/3.set_goods_essential.sql"/>
+    <include file="liquibase/catalog/4.create_user_ingredient.sql"/>
+
+</databaseChangeLog>
