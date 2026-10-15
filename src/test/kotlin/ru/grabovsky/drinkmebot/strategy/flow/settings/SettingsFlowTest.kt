@@ -13,6 +13,7 @@ import ru.grabovsky.drinkmebot.entity.User
 import ru.grabovsky.drinkmebot.entity.UserProfile
 import ru.grabovsky.drinkmebot.service.interfaces.UserService
 import ru.grabovsky.drinkmebot.strategy.flow.EchoI18n
+import ru.grabovsky.drinkmebot.strategy.flow.FakeCocktailFilterService
 import ru.grabovsky.drinkmebot.strategy.flow.FakeDataLocaleService
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.DeleteMessageAction
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.EditMessageAction
@@ -27,7 +28,8 @@ import org.telegram.telegrambots.meta.api.objects.User as TgUser
 class SettingsFlowTest : ShouldSpec({
     val userService = mockk<UserService>(relaxed = true)
     val dataLocale = FakeDataLocaleService()
-    val flow = SettingsFlow(userService, dataLocale, EchoI18n)
+    val filters = FakeCocktailFilterService()
+    val flow = SettingsFlow(userService, dataLocale, EchoI18n, filters)
     val ru = Locale.forLanguageTag("ru")
     val en = Locale.forLanguageTag("en")
     val tgUser = mockk<TgUser> { every { id } returns 7L }
@@ -46,15 +48,24 @@ class SettingsFlowTest : ShouldSpec({
     beforeTest {
         clearMocks(userService)
         dataLocale.choose(7L, null)
+        filters.reset(7L)
         user = User(7L, "T", null, "t").apply { profile = UserProfile(user = this) }
         every { userService.getUser(7L) } returns user
+    }
+
+    should("toggle strict matching") {
+        startMessage().inlineButtons.single { it.payload.data == "STRICT" }.text shouldBe "buttons.settings.strict.off"
+
+        pressed("STRICT").inlineButtons.single { it.payload.data == "STRICT" }.text shouldBe "buttons.settings.strict.on"
+        filters.get(7L).strict shouldBe true
+        pressed("STRICT").inlineButtons.single { it.payload.data == "STRICT" }.text shouldBe "buttons.settings.strict.off"
     }
 
     should("show eight flags in two rows right on the main screen, then auto-delete and close") {
         val buttons = startMessage().inlineButtons
 
         buttons.map { it.payload.data } shouldContainExactly
-            listOf("SL:ru", "SL:ua", "SL:us", "SL:uk", "SL:de", "SL:es", "SL:fr", "SL:it", "CLEAN", "CLOSE")
+            listOf("SL:ru", "SL:ua", "SL:us", "SL:uk", "SL:de", "SL:es", "SL:fr", "SL:it", "CLEAN", "STRICT", "CLOSE")
         buttons.take(8).map { it.row to it.col } shouldContainExactly
             listOf(0 to 0, 0 to 1, 0 to 2, 0 to 3, 1 to 0, 1 to 1, 1 to 2, 1 to 3)
         buttons.take(8).map { it.text.removePrefix("✅ ") } shouldContainExactly
@@ -66,7 +77,7 @@ class SettingsFlowTest : ShouldSpec({
 
         val buttons = startMessage().inlineButtons
 
-        buttons.map { it.payload.data }.takeLast(3) shouldContainExactly listOf("AUTO", "CLEAN", "CLOSE")
+        buttons.map { it.payload.data }.takeLast(4) shouldContainExactly listOf("AUTO", "CLEAN", "STRICT", "CLOSE")
         buttons.single { it.payload.data == "AUTO" }.row shouldBe 2
         buttons.single { it.payload.data == "CLEAN" }.row shouldBe 3
     }

@@ -7,4 +7,6 @@ data class CocktailMatch(
     val matchedCount: Int,
     val missingCount: Int,
     val missingGoods: List<GoodsRef>,
+    /** Коктейля нет на языке пользователя: название показано на запасном английском. */
+    val fallback: Boolean = false,
 )

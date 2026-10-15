@@ -10,6 +10,8 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.jdbc.datasource.init.ScriptUtils
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.postgresql.PostgreSQLContainer
+import ru.grabovsky.drinkmebot.model.CocktailFilter
+import ru.grabovsky.drinkmebot.model.CocktailTag
 import ru.grabovsky.drinkmebot.model.GoodsRef
 
 /** Проверяет SQL подбора на настоящем PostgreSQL с маленьким набором данных. Без Docker тесты не создаются. */
@@ -66,6 +68,7 @@ private fun ShouldSpec.defineTests() {
             "liquibase/catalog/1.create_catalog_tables.sql",
             "liquibase/catalog/4.create_user_ingredient.sql",
             "liquibase/catalog/5.create_goods_category.sql",
+            "liquibase/catalog/8.create_goods_substitute.sql",
         )
             .forEach { script -> dataSource.connection.use { ScriptUtils.executeSqlScript(it, ClassPathResource(script)) } }
         jdbc.update("INSERT INTO drink_me_bot.lang (code) VALUES ('ru'), ('us')")
@@ -79,6 +82,10 @@ private fun ShouldSpec.defineTests() {
         addGoods(6, true, "Сироп", "Syrup")
         jdbc.update("INSERT INTO drink_me_bot.goods_category (goods_id, category) VALUES (6, 'SYRUP')")
 
+        addGoods(7, true, "Трипл сек", "Triple sec")
+        addGoods(8, true, "Драй Оранж", "Dry Orange")
+        jdbc.update("INSERT INTO drink_me_bot.goods_substitute (goods_id, substitute_id) VALUES (7, 8), (8, 7)")
+        addCocktail(110, mapOf("ru" to "Апельсиновый"), listOf(8 to "ingredient"))
         addCocktail(100, mapOf("ru" to "Алфа", "us" to "Alpha"), listOf(1 to "ingredient", 2 to "ingredient", 5 to "gadget"))
         addCocktail(101, mapOf("ru" to "Браво"), listOf(1 to "ingredient", 3 to "ingredient"))
         addCocktail(102, mapOf("ru" to "Чарли"), listOf(1 to "ingredient", 3 to "ingredient", 4 to "ingredient"))
@@ -88,7 +95,54 @@ private fun ShouldSpec.defineTests() {
         addCocktail(106, mapOf("ru" to "Фокстрот"), listOf(1 to "ingredient", 4 to "ingredient"))
         addCocktail(108, mapOf("ru" to "Лимонад с сиропом"), listOf(2 to "ingredient", 6 to "ingredient"))
         addCocktail(109, mapOf("ru" to "Ромовый сироп"), listOf(4 to "ingredient", 6 to "ingredient"))
-        addCocktail(107, mapOf("us" to "Golf"), listOf(1 to "ingredient", 4 to "ingredient"))
+        addCocktail(107, mapOf("us" to "Golf"), listOf(3 to "ingredient", 4 to "ingredient"))
+
+        // Теги (русский каталог): Алфа - крепкие; Браво - крепкие, кислые; Фокстрот - слабоалкогольные, сладкие
+        mapOf(100 to listOf("крепкие"), 101 to listOf("крепкие", "кислые"), 106 to listOf("слабоалкогольные", "сладкие")).forEach { (id, tags) ->
+            tags.forEachIndexed { index, tag ->
+                jdbc.update("INSERT INTO drink_me_bot.cocktail_tag (cocktail_id, lang, position, tag) VALUES (?, 'ru', ?, ?)", id, index + 1, tag)
+            }
+        }
+    }
+
+    should("count optional goods from the optional categories only in strict mode") {
+        jdbc.update("INSERT INTO drink_me_bot.goods (id, is_essential) VALUES (9, FALSE), (10, TRUE)")
+        jdbc.update("INSERT INTO drink_me_bot.goods_i18n (goods_id, lang, name, description) VALUES (9, 'ru', 'Сок', ''), (10, 'ru', 'Джин', '')")
+        jdbc.update("INSERT INTO drink_me_bot.goods_category (goods_id, category) VALUES (9, 'JUICE')")
+        addCocktail(111, mapOf("ru" to "Джин с соком"), listOf(10 to "ingredient", 9 to "ingredient"))
+        setStock(8L, 10)
+        val strict = CocktailFilter(strict = true)
+
+        repository.findByMissing(8L, "ru", 0, 10, 0).map { it.name } shouldBe listOf("Джин с соком")
+        repository.findByMissing(8L, "ru", 0, 10, 0, strict).shouldBeEmpty()
+        val almost = repository.findByMissing(8L, "ru", 1, 10, 0, strict).single()
+        almost.name shouldBe "Джин с соком"
+        almost.missingGoods shouldBe listOf(GoodsRef(9, "Сок"))
+        repository.findBuySuggestions(8L, "ru", 5, strict).map { it.goods.name } shouldBe listOf("Сок")
+
+        setStock(8L, 10, 9)
+        repository.findByMissing(8L, "ru", 0, 10, 0, strict).map { it.name } shouldBe listOf("Джин с соком")
+    }
+
+    should("filter by tags: any tag within a group, all groups together") {
+        setStock(1L, 1)
+        fun missingOne(vararg tags: CocktailTag) =
+            repository.findByMissing(1L, "ru", 1, 10, 0, CocktailFilter(tags.toSet())).map { it.name }
+
+        missingOne(CocktailTag.STRONG) shouldBe listOf("Браво")
+        missingOne(CocktailTag.STRONG, CocktailTag.LOW_ALCOHOL) shouldBe listOf("Браво", "Фокстрот")
+        missingOne(CocktailTag.STRONG, CocktailTag.SOUR) shouldBe listOf("Браво")
+        missingOne(CocktailTag.STRONG, CocktailTag.SWEET).shouldBeEmpty()
+        repository.findByMissing(1L, "ru", 1, 10, 0, CocktailFilter.NONE).size shouldBe 3
+    }
+
+    should("apply the tag filter to the section counts and in other locales") {
+        setStock(1L, 1)
+        val strong = CocktailFilter(setOf(CocktailTag.STRONG))
+
+        repository.countByMissing(1L, "ru", 2, strong) shouldBe mapOf(0 to 1, 1 to 1, 2 to 0)
+        repository.findByMissing(1L, "us", 0, 10, 0, strong).map { it.name } shouldBe listOf("Alpha")
+        repository.findByMissing(1L, "us", 0, 10, 0, CocktailFilter(setOf(CocktailTag.SOUR))).shouldBeEmpty()
     }
 
     should("find cocktails that can be made right now, ignoring non-essential goods and gadgets") {
@@ -144,6 +198,16 @@ private fun ShouldSpec.defineTests() {
         repository.findByMissing(3L, "ru", missing = 0, limit = 10, offset = 0).map { it.name } shouldBe listOf("Ромовый сироп", "Дельта")
     }
 
+    should("count a substitute as the missing ingredient") {
+        setStock(4L, 7)
+
+        repository.findByMissing(4L, "ru", missing = 0, limit = 10, offset = 0).map { it.name } shouldBe listOf("Апельсиновый")
+        repository.countByMissing(4L, "ru", maxMissing = 0) shouldBe mapOf(0 to 1)
+
+        setStock(4L, 6)
+        repository.findByMissing(4L, "ru", missing = 0, limit = 10, offset = 0).shouldBeEmpty()
+    }
+
     should("page results") {
         setStock(1L, 1)
 
@@ -178,12 +242,32 @@ private fun ShouldSpec.defineTests() {
         repository.findByMissing(3L, "ru", 0, 10, 0).map { it.name } shouldBe listOf("Дельта")
     }
 
-    should("work in another locale and skip cocktails missing from it") {
+    should("work in another locale and skip cocktails that are missing from it and from the fallback language") {
         setStock(1L, 1)
 
         repository.findByMissing(1L, "us", 0, 10, 0).map { it.name } shouldBe listOf("Alpha")
-        repository.findByMissing(1L, "us", 1, 10, 0).map { it.name } shouldBe listOf("Golf")
-        repository.findByMissing(1L, "us", 1, 10, 0).single().missingGoods shouldBe listOf(GoodsRef(4, "Rum"))
+        repository.findByMissing(1L, "us", 1, 10, 0).shouldBeEmpty()
+
+        setStock(6L, 4)
+        val golf = repository.findByMissing(6L, "us", 1, 10, 0).single()
+        golf.name shouldBe "Golf"
+        golf.missingGoods shouldBe listOf(GoodsRef(3, "Liqueur"))
+        golf.fallback shouldBe false
+    }
+
+    should("show cocktails missing from the user language in english and mark them") {
+        setStock(6L, 4)
+
+        val almost = repository.findByMissing(6L, "ru", 1, 10, 0).single { it.name == "Golf" }
+        almost.fallback shouldBe true
+        almost.missingGoods shouldBe listOf(GoodsRef(3, "Liqueur"))
+
+        setStock(1L, 1)
+        val ready = repository.findByMissing(1L, "de", 0, 10, 0).single()
+        ready.name shouldBe "Alpha"
+        ready.fallback shouldBe true
+        repository.findByMissing(1L, "ru", 0, 10, 0).single().fallback shouldBe false
+        repository.countByMissing(1L, "de", maxMissing = 0) shouldBe mapOf(0 to 1)
     }
 
     should("suggest what to buy by the number of unlocked cocktails") {

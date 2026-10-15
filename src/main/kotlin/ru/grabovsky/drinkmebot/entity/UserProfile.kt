@@ -35,4 +35,8 @@ data class UserSettings(
     var cleanChat: Boolean = true,
     /** Язык коктейлей (код локали данных, см. `DataLocale.SUPPORTED`); `null` - определять по языку Telegram. */
     var cocktailLang: String? = null,
+    /** Выбранные теги-фильтры коктейлей (имена `CocktailTag`); пусто - без фильтра. */
+    var cocktailTags: Set<String> = emptySet(),
+    /** Строгий подбор: учитывать и необязательные ингредиенты из категорий соков, фруктов и т. п. */
+    var strictMatching: Boolean = false,
 )

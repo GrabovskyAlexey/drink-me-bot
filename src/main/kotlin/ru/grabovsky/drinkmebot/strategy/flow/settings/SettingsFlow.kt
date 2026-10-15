@@ -3,6 +3,7 @@ package ru.grabovsky.drinkmebot.strategy.flow.settings
 import org.springframework.stereotype.Component
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery
 import org.telegram.telegrambots.meta.api.objects.message.Message
+import ru.grabovsky.drinkmebot.service.interfaces.CocktailFilterService
 import ru.grabovsky.drinkmebot.service.interfaces.DataLocaleService
 import ru.grabovsky.drinkmebot.service.interfaces.I18nService
 import ru.grabovsky.drinkmebot.service.interfaces.UserService
@@ -38,13 +39,15 @@ data class SettingsMainModel(val language: String)
 /**
  * `/settings`: язык бота (флаги прямо на главном экране) и автоудаление служебных сообщений.
  * Язык задаёт сразу всё: интерфейс (русский для `ru`, английский для остальных) и язык коктейлей (8 локалей данных).
- * Callback-кнопки: `SL:<код>`, `AUTO`, `CLEAN`, `CLOSE`.
+ * Строгий подбор (`STRICT`): подбор учитывает и необязательные ингредиенты (соки, фрукты, газировки, травы).
+ * Callback-кнопки: `SL:<код>`, `AUTO`, `CLEAN`, `STRICT`, `CLOSE`.
  */
 @Component
 class SettingsFlow(
     private val userService: UserService,
     private val dataLocale: DataLocaleService,
     private val i18n: I18nService,
+    private val filters: CocktailFilterService,
 ) : FlowHandler<SettingsStateData> {
 
     override val key: FlowKey = FlowKeys.SETTINGS
@@ -85,6 +88,7 @@ class SettingsFlow(
                 profile.settings.cleanChat = !profile.settings.cleanChat
                 userService.saveUser(user)
             }
+            "STRICT" -> filters.toggleStrict(userId)
             "CLOSE" -> return FlowResult(SettingsStep.MAIN.key, state, listOf(DeleteMessageAction(MAIN_BINDING), answer), completed = true)
             else -> return null
         }
@@ -103,8 +107,10 @@ class SettingsFlow(
         val auto = listOfNotNull(
             button(i18n.i18n("buttons.settings.auto", locale), "AUTO", row = FLAG_ROWS).takeIf { dataLocale.chosen(userId) != null },
         )
+        val strict = filters.get(userId).strict
         val buttons = flags + auto + listOf(
             button(i18n.i18n("buttons.settings.clean.${if (clean) "on" else "off"}", locale), "CLEAN", row = FLAG_ROWS + auto.size),
+            button(i18n.i18n("buttons.settings.strict.${if (strict) "on" else "off"}", locale), "STRICT", row = FLAG_ROWS + auto.size + 1),
             button(i18n.i18n("buttons.common.close", locale), "CLOSE", row = FlowInlineButton.LAST_ROW),
         )
         val model = SettingsMainModel(i18n.i18n("settings.language.$current", locale))

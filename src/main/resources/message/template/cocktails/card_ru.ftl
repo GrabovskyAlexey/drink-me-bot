@@ -1,4 +1,7 @@
 🍸 <b>${data.name?html}</b>
+<#if data.fallback>
+<i>🇺🇸 На вашем языке этого коктейля нет, показан английский вариант.</i>
+</#if>
 <#if data.author??>
 <i>Автор: ${data.author?html}</i>
 </#if>
