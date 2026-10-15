@@ -53,9 +53,10 @@ class StatsRepository(
                 SELECT 1
                 FROM drink_me_bot.cocktail_goods cg
                 JOIN drink_me_bot.goods g ON g.id = cg.goods_id AND g.is_essential
+                LEFT JOIN drink_me_bot.goods_category gc ON gc.goods_id = g.id
                 WHERE cg.lang = :lang AND cg.kind = 'ingredient'
                 GROUP BY cg.cocktail_id
-                HAVING bool_and(EXISTS (
+                HAVING bool_or(gc.category IS DISTINCT FROM 'SYRUP') AND bool_and(EXISTS (
                     SELECT 1 FROM drink_me_bot.user_ingredient ui WHERE ui.user_id = u.user_id AND ui.goods_id = cg.goods_id
                 ))
             )

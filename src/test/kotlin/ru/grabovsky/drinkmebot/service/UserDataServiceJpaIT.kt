@@ -66,6 +66,7 @@ class UserDataServiceJpaIT {
             jdbc.update("INSERT INTO drink_me_bot.user_profile (user_id) VALUES (?)", it)
             jdbc.update("INSERT INTO drink_me_bot.user_ingredient (user_id, goods_id) VALUES (?, 1)", it)
             jdbc.update("INSERT INTO drink_me_bot.user_activity_day (user_id, day) VALUES (?, CURRENT_DATE)", it)
+            jdbc.update("INSERT INTO drink_me_bot.user_cocktail (user_id, cocktail_id, favorite, cooked) VALUES (?, 10, TRUE, TRUE)", it)
             jdbc.update("INSERT INTO drink_me_bot.flow_state (user_id, flow_key, step_key) VALUES (?, 'START', 'main')", it)
         }
     }
@@ -78,7 +79,7 @@ class UserDataServiceJpaIT {
         service.deleteAll(7L)
 
         assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM drink_me_bot.users WHERE id = 7", Long::class.java))
-        listOf("user_profile", "user_ingredient", "user_activity_day", "flow_state").forEach {
+        listOf("user_profile", "user_ingredient", "user_activity_day", "user_cocktail", "flow_state").forEach {
             assertEquals(0L, count(it, 7L), it)
             assertEquals(1L, count(it, 8L), it)
         }
@@ -99,6 +100,7 @@ class UserDataServiceJpaIT {
         assertTrue(json.contains("\"username\" : \"u7\""))
         assertTrue(json.contains("Водка"))
         assertTrue(json.contains("activityDays"))
+        assertTrue(json.contains("Алфа"))
     }
 
     companion object {
@@ -122,9 +124,12 @@ class UserDataServiceJpaIT {
                 "liquibase/catalog/1.create_catalog_tables.sql",
                 "liquibase/catalog/4.create_user_ingredient.sql",
                 "liquibase/stats/1.create_stats_tables.sql",
+                "liquibase/collections/1.create_user_cocktail.sql",
             ).forEach { script -> dataSource.connection.use { ScriptUtils.executeSqlScript(it, ClassPathResource(script)) } }
             val jdbc = JdbcTemplate(dataSource)
             jdbc.update("INSERT INTO drink_me_bot.lang (code) VALUES ('ru')")
+            jdbc.update("INSERT INTO drink_me_bot.cocktail (id) VALUES (10)")
+            jdbc.update("INSERT INTO drink_me_bot.cocktail_i18n (cocktail_id, lang, name) VALUES (10, 'ru', 'Алфа')")
             jdbc.update("INSERT INTO drink_me_bot.goods (id, is_essential) VALUES (1, true)")
             jdbc.update("INSERT INTO drink_me_bot.goods_i18n (goods_id, lang, name, description) VALUES (1, 'ru', 'Водка', '')")
         }

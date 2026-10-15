@@ -9,13 +9,16 @@ import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery
 import ru.grabovsky.drinkmebot.model.BuySuggestion
 import ru.grabovsky.drinkmebot.model.CardIngredient
 import ru.grabovsky.drinkmebot.model.CocktailCard
 import ru.grabovsky.drinkmebot.model.CocktailMatch
 import ru.grabovsky.drinkmebot.model.GoodsRef
+import ru.grabovsky.drinkmebot.model.CocktailMarks
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailCardService
+import ru.grabovsky.drinkmebot.service.interfaces.CocktailCollectionService
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailSuggestService
 import ru.grabovsky.drinkmebot.service.interfaces.I18nService
 import ru.grabovsky.drinkmebot.service.interfaces.IngredientService
@@ -36,12 +39,13 @@ import org.telegram.telegrambots.meta.api.objects.User as TgUser
 class CocktailsFlowTest : ShouldSpec({
     val suggestions = mockk<CocktailSuggestService>()
     val cards = mockk<CocktailCardService>()
+    val collections = mockk<CocktailCollectionService>()
     val ingredients = mockk<IngredientService>()
     val i18n = object : I18nService {
         override fun i18n(code: String, locale: Locale, default: String?, vararg args: Any?) =
             if (args.isEmpty()) code else "$code(${args.joinToString(",")})"
     }
-    val flow = CocktailsFlow(suggestions, cards, ingredients, i18n, FakeDataLocaleService(), mockk<StatsService>(relaxed = true))
+    val flow = CocktailsFlow(suggestions, cards, collections, ingredients, i18n, FakeDataLocaleService(), mockk<StatsService>(relaxed = true))
     val ru = Locale.forLanguageTag("ru")
     val tgUser = mockk<TgUser> { every { id } returns 7L }
     val callback = mockk<CallbackQuery> { every { id } returns "cb1" }
@@ -56,7 +60,10 @@ class CocktailsFlowTest : ShouldSpec({
         (flow.onCallback(context(step), callback, data)!!.actions.first() as EditMessageAction).message
 
     beforeTest {
-        clearMocks(suggestions, cards, ingredients)
+        clearMocks(suggestions, cards, ingredients, collections)
+        every { collections.nonAlcoholicCount("ru") } returns 0
+        every { collections.favoritesCount(7L, "ru") } returns 0
+        every { collections.marks(7L, any()) } returns CocktailMarks()
         every { ingredients.selectedCount(7L) } returns 4
         every { suggestions.counts(7L, "ru") } returns mapOf(0 to 3, 1 to 12, 2 to 0)
     }
@@ -70,11 +77,12 @@ class CocktailsFlowTest : ShouldSpec({
         message.inlineButtons.map { it.text } shouldContainExactly listOf(
             "buttons.cocktails.ready(3)",
             "buttons.cocktails.missing1(12)",
+            "buttons.cocktails.random",
             "buttons.cocktails.buy",
             "buttons.cocktails.to_ingredients",
             "buttons.common.close",
         )
-        message.inlineButtons.map { it.payload.data } shouldContainExactly listOf("S:0:0", "S:1:0", "B", "OPEN", "CLOSE")
+        message.inlineButtons.map { it.payload.data } shouldContainExactly listOf("S:0:0", "S:1:0", "R", "B", "OPEN", "CLOSE")
         message.inlineButtons.first { it.payload.data == "OPEN" }.payload.flow shouldBe "INGREDIENTS"
     }
 
@@ -134,7 +142,8 @@ class CocktailsFlowTest : ShouldSpec({
         model.tags shouldBe "крепкие · кислые"
         model.gadgets shouldBe "Шейкер, Стрейнер"
         model.hasMarks shouldBe true
-        message.inlineButtons.single().payload.data shouldBe "S:1:2"
+        message.inlineButtons.map { it.payload.data } shouldContainExactly listOf("F:10:1:2", "K:10:1:2", "S:1:2")
+        message.inlineButtons.map { it.text } shouldContain "buttons.cocktails.favorite.off"
     }
 
     should("fall back to the section when the cocktail does not exist in the locale") {
@@ -144,6 +153,73 @@ class CocktailsFlowTest : ShouldSpec({
         val result = flow.onCallback(context(), callback, "C:99:0:0")!!
 
         result.stepKey shouldBe "list"
+    }
+
+    should("show non-alcoholic and favorites sections and the random button when there is something to show") {
+        every { collections.nonAlcoholicCount("ru") } returns 41
+        every { collections.favoritesCount(7L, "ru") } returns 2
+
+        val buttons = (flow.start(FlowStartContext(tgUser, ru)).actions.single() as SendMessageAction).message.inlineButtons
+
+        buttons.map { it.payload.data } shouldContainExactly listOf("S:0:0", "S:1:0", "S:10:0", "S:11:0", "R", "B", "OPEN", "CLOSE")
+        buttons.map { it.text } shouldContain "buttons.cocktails.nonalcoholic(41)"
+        buttons.map { it.text } shouldContain "buttons.cocktails.favorites(2)"
+    }
+
+    should("list non-alcoholic cocktails without missing ingredients and open their cards") {
+        every { collections.nonAlcoholicCount("ru") } returns 41
+        every { collections.nonAlcoholic("ru", 0, 8) } returns listOf(match(30, "Лимонад"))
+
+        val message = editedMessage("S:10:0")
+
+        val model = message.model as CocktailsListModel
+        model.title shouldBe "cocktails.section.nonalcoholic"
+        model.total shouldBe 41
+        model.items shouldContainExactly listOf(CocktailsListItem(1, "Лимонад", ""))
+        message.inlineButtons.map { it.payload.data } shouldContain "C:30:10:0"
+        message.inlineButtons.map { it.payload.data } shouldContain "S:10:1"
+    }
+
+    should("list favorites of the user") {
+        every { collections.favoritesCount(7L, "ru") } returns 1
+        every { collections.favorites(7L, "ru", 0, 8) } returns listOf(match(10, "Алфа"))
+
+        val model = editedMessage("S:11:0").model as CocktailsListModel
+
+        model.title shouldBe "cocktails.section.favorites"
+        model.items.single().name shouldBe "Алфа"
+    }
+
+    should("toggle favorite and cooked marks and redraw the card with the new state") {
+        every { cards.card(7L, "ru", 10) } returns CocktailCard(10, "Алфа", null, emptyList(), emptyList(), emptyList(), emptyList())
+        every { collections.toggleFavorite(7L, 10) } returns true
+        every { collections.toggleCooked(7L, 10) } returns true
+        every { collections.marks(7L, 10) } returns CocktailMarks(favorite = true, cooked = true)
+
+        val favorite = editedMessage("F:10:0:1", CocktailsStep.CARD)
+        val cooked = editedMessage("K:10:0:1", CocktailsStep.CARD)
+
+        verify { collections.toggleFavorite(7L, 10) }
+        verify { collections.toggleCooked(7L, 10) }
+        favorite.inlineButtons.map { it.text } shouldContainExactly
+            listOf("buttons.cocktails.favorite.on", "buttons.cocktails.cooked.on", "buttons.common.back")
+        cooked.inlineButtons.map { it.payload.data } shouldContainExactly listOf("F:10:0:1", "K:10:0:1", "S:0:1")
+    }
+
+    should("show a random ready cocktail with a button for another one and back to the main screen") {
+        every { collections.randomReady(7L, "ru", any()) } returns match(10, "Алфа")
+        every { cards.card(7L, "ru", 10) } returns CocktailCard(10, "Алфа", null, emptyList(), emptyList(), emptyList(), emptyList())
+
+        val message = editedMessage("R")
+
+        (message.model as CocktailsCardModel).name shouldBe "Алфа"
+        message.inlineButtons.map { it.payload.data } shouldContainExactly listOf("F:10:-1:0", "K:10:-1:0", "R", "M")
+    }
+
+    should("return to the main screen when nothing is ready for the random button") {
+        every { collections.randomReady(7L, "ru", any()) } returns null
+
+        flow.onCallback(context(), callback, "R")!!.stepKey shouldBe "main"
     }
 
     should("suggest what to buy") {

@@ -11,4 +11,4 @@ You have not marked anything yet. Open /ingredients and choose what you have.
 🛒 Missing two: <b>${data.missingTwo?c}</b>
 </#if>
 
-<i>Only the essential ingredients count: spirits, liqueurs, vermouths and bitters. Juices, citrus, syrups and ice can be bought in any shop. There are no non-alcoholic cocktails here yet.</i>
+<i>Only the essential ingredients count: spirits, liqueurs, vermouths, bitters and syrups. Juices, citrus and ice can be bought in any shop.</i>
