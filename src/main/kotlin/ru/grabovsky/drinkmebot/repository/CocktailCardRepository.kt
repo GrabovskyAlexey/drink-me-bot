@@ -36,7 +36,14 @@ class CocktailCardRepository(
             SELECT cg.kind, cg.name, cg.amount,
                    COALESCE(u.label, lower(cg.unit_code)) AS unit,
                    g.is_essential,
-                   (ui.goods_id IS NOT NULL) AS have
+                   (ui.goods_id IS NOT NULL) AS have,
+                   (SELECT gi.name
+                    FROM drink_me_bot.goods_substitute gs
+                             JOIN drink_me_bot.user_ingredient sui ON sui.goods_id = gs.substitute_id AND sui.user_id = :userId
+                             JOIN drink_me_bot.goods_i18n gi ON gi.goods_id = gs.substitute_id AND gi.lang = cg.lang
+                    WHERE gs.goods_id = cg.goods_id
+                    ORDER BY gi.name
+                    LIMIT 1) AS substitute_name
             FROM drink_me_bot.cocktail_goods cg
             JOIN drink_me_bot.goods g ON g.id = cg.goods_id
             LEFT JOIN drink_me_bot.unit_i18n u ON u.unit_code = cg.unit_code AND u.lang = cg.lang
@@ -46,7 +53,10 @@ class CocktailCardRepository(
             """.trimIndent(),
             params,
         ) { rs, _ ->
-            Row(rs.getString("kind"), rs.getString("name"), quantity(rs.getBigDecimal("amount"), rs.getString("unit")), rs.getBoolean("is_essential"), rs.getBoolean("have"))
+            Row(
+                rs.getString("kind"), rs.getString("name"), quantity(rs.getBigDecimal("amount"), rs.getString("unit")),
+                rs.getBoolean("is_essential"), rs.getBoolean("have"), rs.getString("substitute_name"),
+            )
         }
 
         return CocktailCard(
@@ -54,13 +64,14 @@ class CocktailCardRepository(
             name = name,
             author = author?.takeIf { it.isNotBlank() },
             tags = tags,
-            ingredients = goods.filter { it.kind == INGREDIENT }.map { CardIngredient(it.name, it.quantity, it.essential, it.have) },
+            ingredients = goods.filter { it.kind == INGREDIENT }.map { CardIngredient(it.name, it.quantity, it.essential, it.have || it.substitute != null, substitute = it.substitute.takeIf { _ -> !it.have }) },
             gadgets = goods.filter { it.kind == GADGET }.map { it.name },
             steps = steps,
         )
     }
 
-    private data class Row(val kind: String, val name: String, val quantity: String, val essential: Boolean, val have: Boolean)
+    /** [have] - есть сам товар, [substitute] - название отмеченной пользователем замены (если есть). */
+    private data class Row(val kind: String, val name: String, val quantity: String, val essential: Boolean, val have: Boolean, val substitute: String?)
 
     private companion object {
         const val INGREDIENT = "ingredient"

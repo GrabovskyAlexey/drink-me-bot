@@ -53,6 +53,7 @@ private fun ShouldSpec.defineTests() {
             "liquibase/catalog/1.create_catalog_tables.sql",
             "liquibase/catalog/4.create_user_ingredient.sql",
             "liquibase/catalog/5.create_goods_category.sql",
+            "liquibase/catalog/8.create_goods_substitute.sql",
             "liquibase/stats/1.create_stats_tables.sql",
         ).forEach { script -> dataSource.connection.use { ScriptUtils.executeSqlScript(it, ClassPathResource(script)) } }
 
@@ -63,6 +64,9 @@ private fun ShouldSpec.defineTests() {
         addGoods(2, true, "Ликёр")
         addGoods(3, false, "Лайм")
         addGoods(4, true, "Сироп")
+        addGoods(5, true, "Пара")
+        addGoods(6, true, "Замена")
+        jdbc.update("INSERT INTO drink_me_bot.goods_substitute (goods_id, substitute_id) VALUES (5, 6)")
         jdbc.update("INSERT INTO drink_me_bot.goods_category (goods_id, category) VALUES (4, 'SYRUP')")
         addCocktail(10, "Коктейль А", 1, 3) // нужна водка
         addCocktail(11, "Коктейль Б", 1, 2) // нужны водка и ликёр
@@ -71,21 +75,23 @@ private fun ShouldSpec.defineTests() {
         addUser(102) // ингредиентов нет
         addCocktail(12, "Лимонад с сиропом", 3, 4) // безалкогольный: сироп не алкоголь
         addUser(103, 4) // только сироп: готового коктейля нет
+        addCocktail(13, "Парный", 5)
+        addUser(104, 6) // есть замена обязательного ингредиента: коктейль 13 готов
     }
 
     should("count users with ingredients, marks and users without a ready cocktail") {
         val stats = repository.ingredients()
-        stats.usersWithIngredients shouldBe 3
-        stats.totalMarks shouldBe 4
+        stats.usersWithIngredients shouldBe 4
+        stats.totalMarks shouldBe 5
         stats.usersWithoutReady shouldBe 2
     }
 
     should("rank popular ingredients by number of users") {
-        repository.popularIngredients(10) shouldBe listOf(PopularItem("Ликёр", 2), PopularItem("Водка", 1), PopularItem("Сироп", 1))
+        repository.popularIngredients(10) shouldBe listOf(PopularItem("Ликёр", 2), PopularItem("Водка", 1), PopularItem("Замена", 1), PopularItem("Сироп", 1))
     }
 
     should("count audience and activity by day") {
-        repository.countUsers() shouldBe 4
+        repository.countUsers() shouldBe 5
         val today = LocalDate.now()
         repository.touchActivity(100, today)
         repository.touchActivity(100, today)

@@ -9,7 +9,7 @@ import ru.grabovsky.drinkmebot.model.GoodsRef
 
 /**
  * Подбор коктейлей по ингредиентам пользователя (`user_ingredient`).
- * Учитываются только обязательные ингредиенты (`goods.is_essential`); в подбор попадают лишь коктейли хотя бы с одним
+ * Учитываются только обязательные ингредиенты (`goods.is_essential`), ингредиент считается имеющимся и при наличии его замены (`goods_substitute`); в подбор попадают лишь коктейли хотя бы с одним
  * алкогольным обязательным ингредиентом (не из категории `SYRUP`), безалкогольные показываются в своём разделе. Гаджеты и необязательные ингредиенты на результат не влияют.
  */
 @Repository
@@ -91,12 +91,18 @@ class CocktailSuggestRepository(
         /** `required` - обязательные ингредиенты коктейлей локали и флаг наличия у пользователя, `stats` - итоги по коктейлю. */
         const val REQUIRED_CTE = """
             WITH required AS (
-                SELECT cg.cocktail_id, cg.goods_id, cg.position, (ui.goods_id IS NOT NULL) AS have,
+                SELECT cg.cocktail_id, cg.goods_id, cg.position,
+                       EXISTS (
+                           SELECT 1 FROM drink_me_bot.user_ingredient ui
+                           WHERE ui.user_id = :userId
+                             AND (ui.goods_id = cg.goods_id
+                                  OR EXISTS (SELECT 1 FROM drink_me_bot.goods_substitute gs
+                                             WHERE gs.goods_id = cg.goods_id AND gs.substitute_id = ui.goods_id))
+                       ) AS have,
                        (gc.category IS DISTINCT FROM 'SYRUP') AS alcoholic
                 FROM drink_me_bot.cocktail_goods cg
                 JOIN drink_me_bot.goods g ON g.id = cg.goods_id AND g.is_essential
                 LEFT JOIN drink_me_bot.goods_category gc ON gc.goods_id = cg.goods_id
-                LEFT JOIN drink_me_bot.user_ingredient ui ON ui.goods_id = cg.goods_id AND ui.user_id = :userId
                 WHERE cg.lang = :lang AND cg.kind = 'ingredient'
             ),
             stats AS (

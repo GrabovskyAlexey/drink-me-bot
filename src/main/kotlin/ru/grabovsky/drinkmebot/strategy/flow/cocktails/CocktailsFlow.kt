@@ -212,14 +212,17 @@ class CocktailsFlow(
             if (random) backButton(locale)
             else FlowInlineButton(i18n.i18n("buttons.common.back", locale), callback("S:$section:$page"), row = FlowInlineButton.LAST_ROW),
         )
-        return CocktailsStep.CARD to simpleMessage(CocktailsStep.CARD, cardModel(card), buttons)
+        return CocktailsStep.CARD to simpleMessage(CocktailsStep.CARD, cardModel(card, locale), buttons)
     }
 
-    private fun cardModel(card: CocktailCard) = CocktailsCardModel(
+    private fun cardModel(card: CocktailCard, locale: Locale) = CocktailsCardModel(
         name = card.name,
         author = card.author,
         tags = card.tags.joinToString(" · "),
-        ingredients = card.ingredients.map { "${marker(it.essential, it.have)} ${it.name} — ${it.quantity}" },
+        ingredients = card.ingredients.map {
+            val substitute = it.substitute?.let { name -> " (${i18n.i18n("cocktails.card.substitute", locale, null, name)})" }.orEmpty()
+            "${marker(it.essential, it.have)} ${it.name} — ${it.quantity}$substitute"
+        },
         gadgets = card.gadgets.joinToString(", "),
         steps = card.steps,
         hasMarks = card.ingredients.any { it.essential },

@@ -66,6 +66,7 @@ private fun ShouldSpec.defineTests() {
             "liquibase/catalog/1.create_catalog_tables.sql",
             "liquibase/catalog/4.create_user_ingredient.sql",
             "liquibase/catalog/5.create_goods_category.sql",
+            "liquibase/catalog/8.create_goods_substitute.sql",
         )
             .forEach { script -> dataSource.connection.use { ScriptUtils.executeSqlScript(it, ClassPathResource(script)) } }
         jdbc.update("INSERT INTO drink_me_bot.lang (code) VALUES ('ru'), ('us')")
@@ -79,6 +80,10 @@ private fun ShouldSpec.defineTests() {
         addGoods(6, true, "Сироп", "Syrup")
         jdbc.update("INSERT INTO drink_me_bot.goods_category (goods_id, category) VALUES (6, 'SYRUP')")
 
+        addGoods(7, true, "Трипл сек", "Triple sec")
+        addGoods(8, true, "Драй Оранж", "Dry Orange")
+        jdbc.update("INSERT INTO drink_me_bot.goods_substitute (goods_id, substitute_id) VALUES (7, 8), (8, 7)")
+        addCocktail(110, mapOf("ru" to "Апельсиновый"), listOf(8 to "ingredient"))
         addCocktail(100, mapOf("ru" to "Алфа", "us" to "Alpha"), listOf(1 to "ingredient", 2 to "ingredient", 5 to "gadget"))
         addCocktail(101, mapOf("ru" to "Браво"), listOf(1 to "ingredient", 3 to "ingredient"))
         addCocktail(102, mapOf("ru" to "Чарли"), listOf(1 to "ingredient", 3 to "ingredient", 4 to "ingredient"))
@@ -142,6 +147,16 @@ private fun ShouldSpec.defineTests() {
 
         setStock(3L, 4, 6)
         repository.findByMissing(3L, "ru", missing = 0, limit = 10, offset = 0).map { it.name } shouldBe listOf("Ромовый сироп", "Дельта")
+    }
+
+    should("count a substitute as the missing ingredient") {
+        setStock(4L, 7)
+
+        repository.findByMissing(4L, "ru", missing = 0, limit = 10, offset = 0).map { it.name } shouldBe listOf("Апельсиновый")
+        repository.countByMissing(4L, "ru", maxMissing = 0) shouldBe mapOf(0 to 1)
+
+        setStock(4L, 6)
+        repository.findByMissing(4L, "ru", missing = 0, limit = 10, offset = 0).shouldBeEmpty()
     }
 
     should("page results") {

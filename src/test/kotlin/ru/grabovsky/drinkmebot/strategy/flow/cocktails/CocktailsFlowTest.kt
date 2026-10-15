@@ -146,6 +146,18 @@ class CocktailsFlowTest : ShouldSpec({
         message.inlineButtons.map { it.text } shouldContain "buttons.cocktails.favorite.off"
     }
 
+    should("name the substitute next to an ingredient available through it") {
+        every { cards.card(7L, "ru", 10) } returns CocktailCard(
+            id = 10, name = "Алфа", author = null, tags = emptyList(),
+            ingredients = listOf(CardIngredient("Драй Оранж", "20 мл", essential = true, have = true, substitute = "Трипл сек")),
+            gadgets = emptyList(), steps = emptyList(),
+        )
+
+        val model = editedMessage("C:10:0:0", CocktailsStep.LIST).model as CocktailsCardModel
+
+        model.ingredients shouldContainExactly listOf("✅ Драй Оранж — 20 мл (cocktails.card.substitute(Трипл сек))")
+    }
+
     should("fall back to the section when the cocktail does not exist in the locale") {
         every { cards.card(7L, "ru", 99) } returns null
         every { suggestions.findCocktails(7L, "ru", 0, 0, 8) } returns listOf(match(10, "Алфа"))
