@@ -208,8 +208,17 @@ class IngredientsFlowTest : ShouldSpec({
         val message = (flow.onCallback(context(), callback, "M:1")!!.actions.first() as EditMessageAction).message
 
         message.inlineButtons.filter { it.payload.data.startsWith("V:") }.map { it.payload.data } shouldContainExactly
-            listOf("V:BRANDY:0", "V:LIQUEUR:0", "V:WINE:0", "V:BITTER:0", "V:OTHER:0")
+            listOf("V:BRANDY:0", "V:LIQUEUR:0", "V:WINE:0", "V:BITTER:0", "V:SYRUP:0")
         message.inlineButtons.map { it.payload.data } shouldContain "M:0"
+        message.inlineButtons.map { it.payload.data } shouldContain "M:2"
+    }
+
+    should("show the last category on the third page") {
+        every { ingredients.categories(7L) } returns IngredientCategory.entries.map { CategorySummary(it, 3, 0) }
+
+        val message = (flow.onCallback(context(), callback, "M:2")!!.actions.first() as EditMessageAction).message
+
+        message.inlineButtons.filter { it.payload.data.startsWith("V:") }.map { it.payload.data } shouldContainExactly listOf("V:OTHER:0")
     }
 
     should("go back to the categories page that contains the opened category") {
