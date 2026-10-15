@@ -73,6 +73,29 @@ private fun ShouldSpec.defineTests() {
         repository.countNonAlcoholic("de") shouldBe 0
     }
 
+    should("fall back to english for non-alcoholic cocktails missing from the user language") {
+        jdbc.update("INSERT INTO drink_me_bot.lang (code) VALUES ('us') ON CONFLICT DO NOTHING")
+        jdbc.update("INSERT INTO drink_me_bot.cocktail (id) VALUES (15)")
+        jdbc.update("INSERT INTO drink_me_bot.cocktail_i18n (cocktail_id, lang, name) VALUES (15, 'us', 'Lemonade')")
+        jdbc.update("INSERT INTO drink_me_bot.goods_i18n (goods_id, lang, name, description) VALUES (2, 'us', 'Lemonade', '') ON CONFLICT DO NOTHING")
+        jdbc.update(
+            "INSERT INTO drink_me_bot.cocktail_goods (cocktail_id, lang, kind, goods_id, position, name, amount, unit_code) " +
+                "VALUES (15, 'us', 'ingredient', 2, 1, 'Lemonade', 1, 'ML')",
+        )
+
+        repository.countNonAlcoholic("ru") shouldBe 4
+        val fallback = repository.findNonAlcoholic("ru", 10, 0).single { it.cocktailId == 15 }
+        fallback.name shouldBe "Lemonade"
+        fallback.fallback shouldBe true
+        repository.findNonAlcoholic("ru", 10, 0).filter { it.cocktailId != 15 }.none { it.fallback } shouldBe true
+        repository.countNonAlcoholic("us") shouldBe 1
+
+        jdbc.update("DELETE FROM drink_me_bot.cocktail_goods WHERE cocktail_id = 15")
+        jdbc.update("DELETE FROM drink_me_bot.goods_i18n WHERE goods_id = 2 AND lang = 'us'")
+        jdbc.update("DELETE FROM drink_me_bot.cocktail_i18n WHERE cocktail_id = 15")
+        jdbc.update("DELETE FROM drink_me_bot.cocktail WHERE id = 15")
+    }
+
     should("toggle favorite and cooked marks independently") {
         repository.marks(7, 10) shouldBe CocktailMarks()
 

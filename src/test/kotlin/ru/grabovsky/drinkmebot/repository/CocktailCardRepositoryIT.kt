@@ -49,6 +49,8 @@ private fun ShouldSpec.defineTests() {
             "liquibase/mvp/1.create_tables.sql",
             "liquibase/catalog/1.create_catalog_tables.sql",
             "liquibase/catalog/4.create_user_ingredient.sql",
+            "liquibase/catalog/5.create_goods_category.sql",
+            "liquibase/catalog/8.create_goods_substitute.sql",
         ).forEach { script -> dataSource.connection.use { ScriptUtils.executeSqlScript(it, ClassPathResource(script)) } }
         jdbc.update("INSERT INTO drink_me_bot.lang (code) VALUES ('ru')")
         // у единицы OZ нет подписи на ru - берётся код в нижнем регистре
@@ -59,6 +61,9 @@ private fun ShouldSpec.defineTests() {
         addGoods(2, false, "Сок лайма")
         addGoods(3, false, "Сироп")
         addGoods(5, false, "Шейкер")
+        addGoods(7, true, "Трипл сек")
+        addGoods(8, true, "Драй Оранж")
+        jdbc.update("INSERT INTO drink_me_bot.goods_substitute (goods_id, substitute_id) VALUES (7, 8), (8, 7)")
 
         jdbc.update("INSERT INTO drink_me_bot.cocktail (id) VALUES (100), (101)")
         jdbc.update("INSERT INTO drink_me_bot.cocktail_i18n (cocktail_id, lang, name, author) VALUES (100, 'ru', 'Алфа', 'Автор'), (101, 'ru', 'Браво', '')")
@@ -69,6 +74,26 @@ private fun ShouldSpec.defineTests() {
         addComposition(100, "ingredient", 3, 3, "Сироп", "0.5", "OZ")
         addComposition(100, "gadget", 5, 1, "Шейкер", "1", "PIECE")
         addComposition(101, "ingredient", 1, 1, "Водка", "30", "ML")
+        jdbc.update("INSERT INTO drink_me_bot.cocktail (id) VALUES (102)")
+        jdbc.update("INSERT INTO drink_me_bot.cocktail_i18n (cocktail_id, lang, name, author) VALUES (102, 'ru', 'Апельсиновый', '')")
+        addComposition(102, "ingredient", 8, 1, "Драй Оранж", "20", "ML")
+    }
+
+    should("mark an ingredient as available through its substitute and name the substitute") {
+        setStock(5L, 7)
+
+        val ingredient = repository.find(5L, "ru", 102)!!.ingredients.single()
+
+        ingredient.have shouldBe true
+        ingredient.substitute shouldBe "Трипл сек"
+    }
+
+    should("not name a substitute when the ingredient itself is in stock or nothing is") {
+        setStock(5L, 8, 7)
+        repository.find(5L, "ru", 102)!!.ingredients.single().let { it.have to it.substitute } shouldBe (true to null)
+
+        setStock(5L)
+        repository.find(5L, "ru", 102)!!.ingredients.single().let { it.have to it.substitute } shouldBe (false to null)
     }
 
     should("build a card with ordered ingredients, tags, steps and gadgets") {
@@ -98,8 +123,28 @@ private fun ShouldSpec.defineTests() {
         repository.find(1L, "ru", 101)!!.author.shouldBeNull()
     }
 
-    should("return nothing for an unknown cocktail or locale") {
+    should("return nothing for an unknown cocktail or a cocktail missing from the locale and from the fallback language") {
         repository.find(1L, "ru", 999).shouldBeNull()
         repository.find(1L, "us", 100).shouldBeNull()
+    }
+
+    should("show the card in english when the cocktail is missing from the user language") {
+        jdbc.update("INSERT INTO drink_me_bot.lang (code) VALUES ('us') ON CONFLICT DO NOTHING")
+        jdbc.update("INSERT INTO drink_me_bot.cocktail (id) VALUES (103)")
+        jdbc.update("INSERT INTO drink_me_bot.cocktail_i18n (cocktail_id, lang, name, author) VALUES (103, 'us', 'Echo', '')")
+        jdbc.update("INSERT INTO drink_me_bot.cocktail_step (cocktail_id, lang, step_no, text) VALUES (103, 'us', 1, 'Stir')")
+        jdbc.update("INSERT INTO drink_me_bot.goods_i18n (goods_id, lang, name, description) VALUES (1, 'us', 'Vodka', '') ON CONFLICT DO NOTHING")
+        jdbc.update(
+            "INSERT INTO drink_me_bot.cocktail_goods (cocktail_id, lang, kind, goods_id, position, name, amount, unit_code) " +
+                "VALUES (103, 'us', 'ingredient', 1, 1, 'Vodka', 50, 'ML')",
+        )
+
+        val card = repository.find(1L, "ru", 103)!!
+
+        card.name shouldBe "Echo"
+        card.fallback shouldBe true
+        card.steps shouldBe listOf("Stir")
+        card.ingredients.single().name shouldBe "Vodka"
+        repository.find(1L, "ru", 100)!!.fallback shouldBe false
     }
 }

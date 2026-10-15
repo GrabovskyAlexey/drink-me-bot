@@ -57,7 +57,11 @@ class StatsRepository(
                 WHERE cg.lang = :lang AND cg.kind = 'ingredient'
                 GROUP BY cg.cocktail_id
                 HAVING bool_or(gc.category IS DISTINCT FROM 'SYRUP') AND bool_and(EXISTS (
-                    SELECT 1 FROM drink_me_bot.user_ingredient ui WHERE ui.user_id = u.user_id AND ui.goods_id = cg.goods_id
+                    SELECT 1 FROM drink_me_bot.user_ingredient ui
+                    WHERE ui.user_id = u.user_id
+                      AND (ui.goods_id = cg.goods_id
+                           OR EXISTS (SELECT 1 FROM drink_me_bot.goods_substitute gs
+                                      WHERE gs.goods_id = cg.goods_id AND gs.substitute_id = ui.goods_id))
                 ))
             )
             """.trimIndent(),

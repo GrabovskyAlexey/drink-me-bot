@@ -4,9 +4,13 @@ import org.springframework.stereotype.Component
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery
 import org.telegram.telegrambots.meta.api.objects.message.Message
 import ru.grabovsky.drinkmebot.model.CocktailCard
+import ru.grabovsky.drinkmebot.model.CocktailFilter
 import ru.grabovsky.drinkmebot.model.CocktailMatch
+import ru.grabovsky.drinkmebot.model.CocktailTag
+import ru.grabovsky.drinkmebot.model.CocktailTagGroup
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailCardService
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailCollectionService
+import ru.grabovsky.drinkmebot.service.interfaces.CocktailFilterService
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailSuggestService
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailSuggestService.Companion.MAX_MISSING
 import ru.grabovsky.drinkmebot.service.interfaces.DataLocaleService
@@ -34,23 +38,37 @@ import ru.grabovsky.drinkmebot.strategy.flow.core.support.PAGE_NOOP
 import ru.grabovsky.drinkmebot.strategy.flow.core.support.buildMessage
 import ru.grabovsky.drinkmebot.strategy.flow.core.support.openButton
 import ru.grabovsky.drinkmebot.strategy.flow.core.support.paginationButtons
+import ru.grabovsky.drinkmebot.util.DataLocale
 import java.util.Locale
 
 enum class CocktailsStep(override val key: String) : FlowStep {
     MAIN("main"),
     LIST("list"),
     CARD("card"),
+    FILTER("filter"),
     BUY("buy"),
 }
 
 /** Состояния нет: все данные приходят в callback, а ингредиенты читаются из БД при каждой перерисовке. */
 data class CocktailsState(val unused: Boolean = false)
 
-data class CocktailsMainModel(val selected: Int, val ready: Int, val missingOne: Int, val missingTwo: Int)
+/** [filter] - названия выбранных тегов-фильтров через запятую (пусто, если фильтра нет). */
+data class CocktailsMainModel(val selected: Int, val ready: Int, val missingOne: Int, val missingTwo: Int, val filter: String = "", val strict: Boolean = false)
 
-data class CocktailsListItem(val number: Int, val name: String, val missing: String)
+/** [fallback] - коктейля нет на языке пользователя, название на запасном английском. */
+data class CocktailsListItem(val number: Int, val name: String, val missing: String, val fallback: Boolean = false)
 
-data class CocktailsListModel(val title: String, val total: Int, val page: Int, val pages: Int, val items: List<CocktailsListItem>)
+data class CocktailsListModel(
+    val title: String,
+    val total: Int,
+    val page: Int,
+    val pages: Int,
+    val items: List<CocktailsListItem>,
+    val filter: String = "",
+) {
+    /** Есть ли на странице коктейли на запасном языке (для пояснения под списком). */
+    val hasFallback: Boolean get() = items.any { it.fallback }
+}
 
 /** [ingredients] - готовые строки с отметкой («✅ Водка — 50 мл»), [hasMarks] - есть ли отметки «есть / не хватает». */
 data class CocktailsCardModel(
@@ -61,7 +79,11 @@ data class CocktailsCardModel(
     val gadgets: String,
     val steps: List<String>,
     val hasMarks: Boolean,
+    /** Карточка на запасном английском: коктейля нет на языке пользователя. */
+    val fallback: Boolean = false,
 )
+
+data class CocktailsFilterModel(val active: Int)
 
 data class CocktailsBuyItem(val name: String, val count: Int)
 
@@ -70,6 +92,7 @@ data class CocktailsBuyModel(val items: List<CocktailsBuyItem>)
 /**
  * `/cocktails`: что можно приготовить из отмеченных ингредиентов. Одно сообщение, которое перерисовывается:
  * разделы (можно / не хватает 1 / не хватает 2) -> список коктейлей -> карточка, а также «что купить».
+ * Теги-фильтры (`CocktailFilterService`) действуют на разделы и «Удиви меня»; экран выбора - `FL`, переключатель `T:<тег>`, сброс `X`.
  * Callback-кнопки: `M`, `S:<раздел>:<страница>`, `C:<id>:<раздел>:<страница>`, `F:`/`K:<id>:<раздел>:<страница>` (избранное, «готовил»), `R`, `B`.
  * Раздел: 0..2 - не хватает N ингредиентов, 10 - безалкогольные, 11 - избранное, -1 - карточка из «Удиви меня».
  */
@@ -82,6 +105,7 @@ class CocktailsFlow(
     private val i18n: I18nService,
     private val dataLocale: DataLocaleService,
     private val stats: StatsService,
+    private val filters: CocktailFilterService,
 ) : FlowHandler<CocktailsState> {
 
     override val key: FlowKey = FlowKeys.COCKTAILS
@@ -124,6 +148,16 @@ class CocktailsFlow(
             }
             "R" -> randomMessage(userId, locale) ?: (CocktailsStep.MAIN to mainMessage(userId, locale))
             "B" -> CocktailsStep.BUY to buyMessage(userId, locale)
+            "FL" -> CocktailsStep.FILTER to filterMessage(userId, locale)
+            "T" -> {
+                val tag = CocktailTag.entries.find { it.name == parts.getOrNull(1) } ?: return null
+                filters.toggle(userId, tag)
+                CocktailsStep.FILTER to filterMessage(userId, locale)
+            }
+            "X" -> {
+                filters.reset(userId)
+                CocktailsStep.FILTER to filterMessage(userId, locale)
+            }
             PAGE_NOOP -> return FlowResult(context.state.stepKey, state, listOf(answer))
             "CLOSE" -> return FlowResult(CocktailsStep.MAIN.key, state, listOf(DeleteMessageAction(MAIN_BINDING), answer), completed = true)
             else -> return null
@@ -133,12 +167,13 @@ class CocktailsFlow(
 
     private fun mainMessage(userId: Long, locale: Locale): FlowMessage {
         val lang = dataLocale.resolve(userId, locale)
-        val counts = suggestions.counts(userId, lang)
+        val filter = filters.get(userId)
+        val counts = suggestions.counts(userId, lang, filter)
         val ready = counts[0] ?: 0
         val missingOne = counts[1] ?: 0
         val missingTwo = counts[2] ?: 0
-        val nonAlcoholic = collections.nonAlcoholicCount(lang)
-        val favorites = collections.favoritesCount(userId, lang)
+        val nonAlcoholic = collections.nonAlcoholicCount(lang, filter)
+        val favorites = collections.favoritesCount(userId, lang, filter)
         val buttons = listOfNotNull(
             sectionButton(locale, "ready", 0, ready, row = 0),
             sectionButton(locale, "missing1", 1, missingOne, row = 1),
@@ -147,49 +182,51 @@ class CocktailsFlow(
             sectionButton(locale, "favorites", FAVORITES, favorites, row = 4),
             FlowInlineButton(i18n.i18n("buttons.cocktails.random", locale), callback("R"), row = 5).takeIf { ready > 0 },
             FlowInlineButton(i18n.i18n("buttons.cocktails.buy", locale), callback("B"), row = 6).takeIf { missingOne > 0 },
-            FlowKeys.INGREDIENTS.openButton(i18n.i18n("buttons.cocktails.to_ingredients", locale), row = 7),
+            FlowInlineButton(filterButtonText(locale, filter), callback("FL"), row = 7),
+            FlowKeys.INGREDIENTS.openButton(i18n.i18n("buttons.cocktails.to_ingredients", locale), row = 8),
             closeButton(locale),
         )
-        return simpleMessage(CocktailsStep.MAIN, CocktailsMainModel(ingredients.selectedCount(userId), ready, missingOne, missingTwo), buttons)
+        return simpleMessage(CocktailsStep.MAIN, CocktailsMainModel(ingredients.selectedCount(userId), ready, missingOne, missingTwo, filterNames(locale, filter), filter.strict), buttons)
     }
 
     private fun sectionButton(locale: Locale, name: String, section: Int, count: Int, row: Int): FlowInlineButton? =
         FlowInlineButton(i18n.i18n("buttons.cocktails.$name", locale, null, count), callback("S:$section:0"), row = row).takeIf { count > 0 }
 
     /** Размер раздела: 0..[MAX_MISSING] - подбор по ингредиентам, [NON_ALCOHOLIC] и [FAVORITES] - подборки; иначе `null`. */
-    private fun sectionTotal(userId: Long, lang: String, section: Int): Int? = when (section) {
-        in 0..MAX_MISSING -> suggestions.counts(userId, lang)[section] ?: 0
-        NON_ALCOHOLIC -> collections.nonAlcoholicCount(lang)
-        FAVORITES -> collections.favoritesCount(userId, lang)
+    private fun sectionTotal(userId: Long, lang: String, section: Int, filter: CocktailFilter): Int? = when (section) {
+        in 0..MAX_MISSING -> suggestions.counts(userId, lang, filter)[section] ?: 0
+        NON_ALCOHOLIC -> collections.nonAlcoholicCount(lang, filter)
+        FAVORITES -> collections.favoritesCount(userId, lang, filter)
         else -> null
     }
 
-    private fun sectionPage(userId: Long, lang: String, section: Int, page: Int): List<CocktailMatch> = when (section) {
-        NON_ALCOHOLIC -> collections.nonAlcoholic(lang, page, PAGE_SIZE)
-        FAVORITES -> collections.favorites(userId, lang, page, PAGE_SIZE)
-        else -> suggestions.findCocktails(userId, lang, section, page, PAGE_SIZE)
+    private fun sectionPage(userId: Long, lang: String, section: Int, page: Int, filter: CocktailFilter): List<CocktailMatch> = when (section) {
+        NON_ALCOHOLIC -> collections.nonAlcoholic(lang, page, PAGE_SIZE, filter)
+        FAVORITES -> collections.favorites(userId, lang, page, PAGE_SIZE, filter)
+        else -> suggestions.findCocktails(userId, lang, section, page, PAGE_SIZE, filter)
     }
 
     private fun listMessage(userId: Long, locale: Locale, section: Int, requestedPage: Int): FlowMessage? {
         val lang = dataLocale.resolve(userId, locale)
-        val total = sectionTotal(userId, lang, section) ?: return null
+        val filter = filters.get(userId)
+        val total = sectionTotal(userId, lang, section, filter) ?: return null
         val pages = ((total + PAGE_SIZE - 1) / PAGE_SIZE).coerceAtLeast(1)
         val page = requestedPage.coerceIn(0, pages - 1)
-        val found = sectionPage(userId, lang, section, page)
+        val found = sectionPage(userId, lang, section, page, filter)
 
         val items = found.mapIndexed { index, match ->
-            CocktailsListItem(page * PAGE_SIZE + index + 1, match.name, match.missingGoods.joinToString(", ") { it.name })
+            CocktailsListItem(page * PAGE_SIZE + index + 1, match.name, match.missingGoods.joinToString(", ") { it.name }, match.fallback)
         }
         val buttons = found.mapIndexed { index, match ->
-            FlowInlineButton(i18n.i18n("buttons.cocktails.cocktail", locale, null, match.name), callback("C:${match.cocktailId}:$section:$page"), row = index)
+            FlowInlineButton(i18n.i18n("buttons.cocktails.cocktail", locale, null, if (match.fallback) "${match.name} $FALLBACK_FLAG" else match.name), callback("C:${match.cocktailId}:$section:$page"), row = index)
         } + key.paginationButtons(i18n, locale, page, pages, PAGE_SIZE) { "S:$section:$it" } + listOf(backButton(locale))
         val title = i18n.i18n("cocktails.section.${SECTIONS.getValue(section)}", locale)
-        return simpleMessage(CocktailsStep.LIST, CocktailsListModel(title, total, page + 1, pages, items), buttons)
+        return simpleMessage(CocktailsStep.LIST, CocktailsListModel(title, total, page + 1, pages, items, filterNames(locale, filter)), buttons)
     }
 
     /** Случайный коктейль из раздела «можно приготовить»; `null`, если ничего не готово. */
     private fun randomMessage(userId: Long, locale: Locale): Pair<CocktailsStep, FlowMessage>? {
-        val match = collections.randomReady(userId, dataLocale.resolve(userId, locale)) ?: return null
+        val match = collections.randomReady(userId, dataLocale.resolve(userId, locale), filter = filters.get(userId)) ?: return null
         return cardMessage(userId, locale, match.cocktailId, RANDOM, 0)
     }
 
@@ -198,7 +235,7 @@ class CocktailsFlow(
      * кнопка «ещё один случайный»). Нет такого коктейля - возвращаем к разделу.
      */
     private fun cardMessage(userId: Long, locale: Locale, cocktailId: Int, section: Int, page: Int): Pair<CocktailsStep, FlowMessage>? {
-        val card = cards.card(userId, dataLocale.resolve(userId, locale), cocktailId)
+        val card = cards.card(userId, dataLocale.resolve(userId, locale), cocktailId, filters.get(userId).strict)
             ?: return listMessage(userId, locale, section, page)?.let { CocktailsStep.LIST to it }
         // Счётчик просмотров вторичен: сбой статистики не должен ломать показ карточки
         runCatching { stats.recordCocktailView(cocktailId) }
@@ -212,17 +249,21 @@ class CocktailsFlow(
             if (random) backButton(locale)
             else FlowInlineButton(i18n.i18n("buttons.common.back", locale), callback("S:$section:$page"), row = FlowInlineButton.LAST_ROW),
         )
-        return CocktailsStep.CARD to simpleMessage(CocktailsStep.CARD, cardModel(card), buttons)
+        return CocktailsStep.CARD to simpleMessage(CocktailsStep.CARD, cardModel(card, locale), buttons)
     }
 
-    private fun cardModel(card: CocktailCard) = CocktailsCardModel(
+    private fun cardModel(card: CocktailCard, locale: Locale) = CocktailsCardModel(
         name = card.name,
         author = card.author,
         tags = card.tags.joinToString(" · "),
-        ingredients = card.ingredients.map { "${marker(it.essential, it.have)} ${it.name} — ${it.quantity}" },
+        ingredients = card.ingredients.map {
+            val substitute = it.substitute?.let { name -> " (${i18n.i18n("cocktails.card.substitute", locale, null, name)})" }.orEmpty()
+            "${marker(it.essential, it.have)} ${it.name} — ${it.quantity}$substitute"
+        },
         gadgets = card.gadgets.joinToString(", "),
         steps = card.steps,
         hasMarks = card.ingredients.any { it.essential },
+        fallback = card.fallback,
     )
 
     private fun marker(essential: Boolean, have: Boolean) = when {
@@ -232,9 +273,33 @@ class CocktailsFlow(
     }
 
     private fun buyMessage(userId: Long, locale: Locale): FlowMessage {
-        val items = suggestions.whatToBuy(userId, dataLocale.resolve(userId, locale)).map { CocktailsBuyItem(it.goods.name, it.unlocksCount) }
+        val items = suggestions.whatToBuy(userId, dataLocale.resolve(userId, locale), filter = filters.get(userId)).map { CocktailsBuyItem(it.goods.name, it.unlocksCount) }
         return simpleMessage(CocktailsStep.BUY, CocktailsBuyModel(items), listOf(backButton(locale)))
     }
+
+    /** Теги по группам (группа - строки по три кнопки); внутри группы теги - «или», между группами - «и». */
+    private fun filterMessage(userId: Long, locale: Locale): FlowMessage {
+        val filter = filters.get(userId)
+        var row = 0
+        val tagButtons = CocktailTagGroup.entries.flatMap { group ->
+            CocktailTag.entries.filter { it.group == group }.chunked(TAGS_PER_ROW).flatMap { chunk ->
+                chunk.mapIndexed { col, tag ->
+                    val state = if (tag in filter.tags) "selected" else "unselected"
+                    FlowInlineButton(i18n.i18n("buttons.common.$state", locale, null, tagLabel(locale, tag)), callback("T:${tag.name}"), row = row, col = col)
+                }.also { row++ }
+            }
+        }
+        val reset = FlowInlineButton(i18n.i18n("buttons.cocktails.filter.reset", locale), callback("X"), row = row).takeIf { !filter.isEmpty }
+        return simpleMessage(CocktailsStep.FILTER, CocktailsFilterModel(filter.tags.size), tagButtons + listOfNotNull(reset, backButton(locale)))
+    }
+
+    private fun tagLabel(locale: Locale, tag: CocktailTag) = i18n.i18n("cocktails.tag.${tag.name.lowercase()}", locale)
+
+    private fun filterNames(locale: Locale, filter: CocktailFilter) =
+        filter.tags.sortedBy { it.ordinal }.joinToString(", ") { tagLabel(locale, it) }
+
+    private fun filterButtonText(locale: Locale, filter: CocktailFilter) =
+        i18n.i18n(if (filter.isEmpty) "buttons.cocktails.filter" else "buttons.cocktails.filter.active", locale, null, filter.tags.size)
 
     private fun backButton(locale: Locale) =
         FlowInlineButton(i18n.i18n("buttons.common.back", locale), callback("M"), row = FlowInlineButton.LAST_ROW)
@@ -252,6 +317,10 @@ class CocktailsFlow(
     companion object {
         const val MAIN_BINDING = "main"
         const val PAGE_SIZE = 8
+        private const val TAGS_PER_ROW = 3
+
+        /** Флаг запасного (английского) языка: им помечены коктейли без перевода на язык пользователя. */
+        val FALLBACK_FLAG = DataLocale.flag("us")
         /** Разделы: 0..2 - подбор по числу недостающих ингредиентов, дальше подборки без подбора. */
         const val NON_ALCOHOLIC = 10
         const val FAVORITES = 11
