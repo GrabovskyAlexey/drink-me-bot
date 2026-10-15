@@ -34,6 +34,7 @@ import ru.grabovsky.drinkmebot.strategy.flow.core.support.PAGE_NOOP
 import ru.grabovsky.drinkmebot.strategy.flow.core.support.buildMessage
 import ru.grabovsky.drinkmebot.strategy.flow.core.support.openButton
 import ru.grabovsky.drinkmebot.strategy.flow.core.support.paginationButtons
+import ru.grabovsky.drinkmebot.util.DataLocale
 import java.util.Locale
 
 enum class CocktailsStep(override val key: String) : FlowStep {
@@ -48,9 +49,13 @@ data class CocktailsState(val unused: Boolean = false)
 
 data class CocktailsMainModel(val selected: Int, val ready: Int, val missingOne: Int, val missingTwo: Int)
 
-data class CocktailsListItem(val number: Int, val name: String, val missing: String)
+/** [fallback] - коктейля нет на языке пользователя, название на запасном английском. */
+data class CocktailsListItem(val number: Int, val name: String, val missing: String, val fallback: Boolean = false)
 
-data class CocktailsListModel(val title: String, val total: Int, val page: Int, val pages: Int, val items: List<CocktailsListItem>)
+data class CocktailsListModel(val title: String, val total: Int, val page: Int, val pages: Int, val items: List<CocktailsListItem>) {
+    /** Есть ли на странице коктейли на запасном языке (для пояснения под списком). */
+    val hasFallback: Boolean get() = items.any { it.fallback }
+}
 
 /** [ingredients] - готовые строки с отметкой («✅ Водка — 50 мл»), [hasMarks] - есть ли отметки «есть / не хватает». */
 data class CocktailsCardModel(
@@ -61,6 +66,8 @@ data class CocktailsCardModel(
     val gadgets: String,
     val steps: List<String>,
     val hasMarks: Boolean,
+    /** Карточка на запасном английском: коктейля нет на языке пользователя. */
+    val fallback: Boolean = false,
 )
 
 data class CocktailsBuyItem(val name: String, val count: Int)
@@ -178,10 +185,10 @@ class CocktailsFlow(
         val found = sectionPage(userId, lang, section, page)
 
         val items = found.mapIndexed { index, match ->
-            CocktailsListItem(page * PAGE_SIZE + index + 1, match.name, match.missingGoods.joinToString(", ") { it.name })
+            CocktailsListItem(page * PAGE_SIZE + index + 1, match.name, match.missingGoods.joinToString(", ") { it.name }, match.fallback)
         }
         val buttons = found.mapIndexed { index, match ->
-            FlowInlineButton(i18n.i18n("buttons.cocktails.cocktail", locale, null, match.name), callback("C:${match.cocktailId}:$section:$page"), row = index)
+            FlowInlineButton(i18n.i18n("buttons.cocktails.cocktail", locale, null, if (match.fallback) "${match.name} $FALLBACK_FLAG" else match.name), callback("C:${match.cocktailId}:$section:$page"), row = index)
         } + key.paginationButtons(i18n, locale, page, pages, PAGE_SIZE) { "S:$section:$it" } + listOf(backButton(locale))
         val title = i18n.i18n("cocktails.section.${SECTIONS.getValue(section)}", locale)
         return simpleMessage(CocktailsStep.LIST, CocktailsListModel(title, total, page + 1, pages, items), buttons)
@@ -226,6 +233,7 @@ class CocktailsFlow(
         gadgets = card.gadgets.joinToString(", "),
         steps = card.steps,
         hasMarks = card.ingredients.any { it.essential },
+        fallback = card.fallback,
     )
 
     private fun marker(essential: Boolean, have: Boolean) = when {
@@ -255,6 +263,9 @@ class CocktailsFlow(
     companion object {
         const val MAIN_BINDING = "main"
         const val PAGE_SIZE = 8
+
+        /** Флаг запасного (английского) языка: им помечены коктейли без перевода на язык пользователя. */
+        val FALLBACK_FLAG = DataLocale.flag("us")
         /** Разделы: 0..2 - подбор по числу недостающих ингредиентов, дальше подборки без подбора. */
         const val NON_ALCOHOLIC = 10
         const val FAVORITES = 11

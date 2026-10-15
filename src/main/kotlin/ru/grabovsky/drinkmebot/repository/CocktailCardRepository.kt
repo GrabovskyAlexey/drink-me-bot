@@ -13,9 +13,11 @@ class CocktailCardRepository(
     private val jdbc: NamedParameterJdbcTemplate,
 ) {
 
-    /** Карточка коктейля в локали [lang]; `null`, если такого коктейля нет в этой локали. */
+    /** Карточка коктейля в локали [lang] (если на ней нет - на английском, `fallback`); `null`, если коктейля нет и на английском. */
     fun find(userId: Long, lang: String, cocktailId: Int): CocktailCard? {
-        val params = MapSqlParameterSource().addValue("userId", userId).addValue("lang", lang).addValue("id", cocktailId)
+        // Коктейля нет на языке пользователя - показываем запасной английский
+        val shown = if (hasCocktail(cocktailId, lang)) lang else FALLBACK_LANG
+        val params = MapSqlParameterSource().addValue("userId", userId).addValue("lang", shown).addValue("id", cocktailId)
 
         val (name, author) = jdbc.query(
             "SELECT name, author FROM drink_me_bot.cocktail_i18n WHERE cocktail_id = :id AND lang = :lang",
@@ -67,8 +69,15 @@ class CocktailCardRepository(
             ingredients = goods.filter { it.kind == INGREDIENT }.map { CardIngredient(it.name, it.quantity, it.essential, it.have || it.substitute != null, substitute = it.substitute.takeIf { _ -> !it.have }) },
             gadgets = goods.filter { it.kind == GADGET }.map { it.name },
             steps = steps,
+            fallback = shown != lang,
         )
     }
+
+    private fun hasCocktail(cocktailId: Int, lang: String): Boolean =
+        jdbc.queryForObject(
+            "SELECT EXISTS (SELECT 1 FROM drink_me_bot.cocktail_i18n WHERE cocktail_id = :id AND lang = :lang)",
+            MapSqlParameterSource().addValue("id", cocktailId).addValue("lang", lang), Boolean::class.java,
+        ) ?: false
 
     /** [have] - есть сам товар, [substitute] - название отмеченной пользователем замены (если есть). */
     private data class Row(val kind: String, val name: String, val quantity: String, val essential: Boolean, val have: Boolean, val substitute: String?)

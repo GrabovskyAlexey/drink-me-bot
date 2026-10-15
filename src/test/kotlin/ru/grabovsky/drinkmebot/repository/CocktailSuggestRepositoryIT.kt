@@ -93,7 +93,7 @@ private fun ShouldSpec.defineTests() {
         addCocktail(106, mapOf("ru" to "Фокстрот"), listOf(1 to "ingredient", 4 to "ingredient"))
         addCocktail(108, mapOf("ru" to "Лимонад с сиропом"), listOf(2 to "ingredient", 6 to "ingredient"))
         addCocktail(109, mapOf("ru" to "Ромовый сироп"), listOf(4 to "ingredient", 6 to "ingredient"))
-        addCocktail(107, mapOf("us" to "Golf"), listOf(1 to "ingredient", 4 to "ingredient"))
+        addCocktail(107, mapOf("us" to "Golf"), listOf(3 to "ingredient", 4 to "ingredient"))
     }
 
     should("find cocktails that can be made right now, ignoring non-essential goods and gadgets") {
@@ -193,12 +193,32 @@ private fun ShouldSpec.defineTests() {
         repository.findByMissing(3L, "ru", 0, 10, 0).map { it.name } shouldBe listOf("Дельта")
     }
 
-    should("work in another locale and skip cocktails missing from it") {
+    should("work in another locale and skip cocktails that are missing from it and from the fallback language") {
         setStock(1L, 1)
 
         repository.findByMissing(1L, "us", 0, 10, 0).map { it.name } shouldBe listOf("Alpha")
-        repository.findByMissing(1L, "us", 1, 10, 0).map { it.name } shouldBe listOf("Golf")
-        repository.findByMissing(1L, "us", 1, 10, 0).single().missingGoods shouldBe listOf(GoodsRef(4, "Rum"))
+        repository.findByMissing(1L, "us", 1, 10, 0).shouldBeEmpty()
+
+        setStock(6L, 4)
+        val golf = repository.findByMissing(6L, "us", 1, 10, 0).single()
+        golf.name shouldBe "Golf"
+        golf.missingGoods shouldBe listOf(GoodsRef(3, "Liqueur"))
+        golf.fallback shouldBe false
+    }
+
+    should("show cocktails missing from the user language in english and mark them") {
+        setStock(6L, 4)
+
+        val almost = repository.findByMissing(6L, "ru", 1, 10, 0).single { it.name == "Golf" }
+        almost.fallback shouldBe true
+        almost.missingGoods shouldBe listOf(GoodsRef(3, "Liqueur"))
+
+        setStock(1L, 1)
+        val ready = repository.findByMissing(1L, "de", 0, 10, 0).single()
+        ready.name shouldBe "Alpha"
+        ready.fallback shouldBe true
+        repository.findByMissing(1L, "ru", 0, 10, 0).single().fallback shouldBe false
+        repository.countByMissing(1L, "de", maxMissing = 0) shouldBe mapOf(0 to 1)
     }
 
     should("suggest what to buy by the number of unlocked cocktails") {

@@ -24,16 +24,17 @@ class CocktailSuggestRepository(
             $REQUIRED_CTE
             SELECT s.cocktail_id,
                    ci.name,
+                   (s.lang <> :lang) AS fallback,
                    s.matched,
                    s.missing,
                    array_agg(r.goods_id ORDER BY r.position) FILTER (WHERE NOT r.have) AS missing_ids,
                    array_agg(gi.name ORDER BY r.position)    FILTER (WHERE NOT r.have) AS missing_names
             FROM stats s
-            JOIN drink_me_bot.cocktail_i18n ci ON ci.cocktail_id = s.cocktail_id AND ci.lang = :lang
+            JOIN drink_me_bot.cocktail_i18n ci ON ci.cocktail_id = s.cocktail_id AND ci.lang = s.lang
             JOIN required r ON r.cocktail_id = s.cocktail_id
-            JOIN drink_me_bot.goods_i18n gi ON gi.goods_id = r.goods_id AND gi.lang = :lang
+            JOIN drink_me_bot.goods_i18n gi ON gi.goods_id = r.goods_id AND gi.lang = s.lang
             WHERE s.alcoholic > 0 AND s.missing = :missing AND (s.missing = 0 OR s.matched >= 1)
-            GROUP BY s.cocktail_id, ci.name, s.matched, s.missing
+            GROUP BY s.cocktail_id, ci.name, s.lang, s.matched, s.missing
             ORDER BY s.matched DESC, ci.name, s.cocktail_id
             LIMIT :limit OFFSET :offset
             """.trimIndent(),
@@ -47,6 +48,7 @@ class CocktailSuggestRepository(
                 matchedCount = rs.getInt("matched"),
                 missingCount = rs.getInt("missing"),
                 missingGoods = ids.zip(names) { id, name -> GoodsRef(id, name) },
+                fallback = rs.getBoolean("fallback"),
             )
         }
 
@@ -57,7 +59,7 @@ class CocktailSuggestRepository(
             $REQUIRED_CTE
             SELECT s.missing, count(*) AS cnt
             FROM stats s
-            JOIN drink_me_bot.cocktail_i18n ci ON ci.cocktail_id = s.cocktail_id AND ci.lang = :lang
+            JOIN drink_me_bot.cocktail_i18n ci ON ci.cocktail_id = s.cocktail_id AND ci.lang = s.lang
             WHERE s.alcoholic > 0 AND s.missing <= :maxMissing AND (s.missing = 0 OR s.matched >= 1)
             GROUP BY s.missing
             """.trimIndent(),
@@ -73,7 +75,7 @@ class CocktailSuggestRepository(
             $REQUIRED_CTE
             SELECT r.goods_id, gi.name, count(*) AS unlocks
             FROM stats s
-            JOIN drink_me_bot.cocktail_i18n ci ON ci.cocktail_id = s.cocktail_id AND ci.lang = :lang
+            JOIN drink_me_bot.cocktail_i18n ci ON ci.cocktail_id = s.cocktail_id AND ci.lang = s.lang
             JOIN required r ON r.cocktail_id = s.cocktail_id AND NOT r.have
             JOIN drink_me_bot.goods_i18n gi ON gi.goods_id = r.goods_id AND gi.lang = :lang
             WHERE s.alcoholic > 0 AND s.missing = 1 AND s.matched >= 1
@@ -90,8 +92,9 @@ class CocktailSuggestRepository(
     private companion object {
         /** `required` - обязательные ингредиенты коктейлей локали и флаг наличия у пользователя, `stats` - итоги по коктейлю. */
         const val REQUIRED_CTE = """
-            WITH required AS (
-                SELECT cg.cocktail_id, cg.goods_id, cg.position,
+            WITH $COCKTAIL_LANG_CTE,
+            required AS (
+                SELECT cg.cocktail_id, cl.lang, cg.goods_id, cg.position,
                        EXISTS (
                            SELECT 1 FROM drink_me_bot.user_ingredient ui
                            WHERE ui.user_id = :userId
@@ -100,18 +103,18 @@ class CocktailSuggestRepository(
                                              WHERE gs.goods_id = cg.goods_id AND gs.substitute_id = ui.goods_id))
                        ) AS have,
                        (gc.category IS DISTINCT FROM 'SYRUP') AS alcoholic
-                FROM drink_me_bot.cocktail_goods cg
+                FROM cocktail_lang cl
+                JOIN drink_me_bot.cocktail_goods cg ON cg.cocktail_id = cl.cocktail_id AND cg.lang = cl.lang AND cg.kind = 'ingredient'
                 JOIN drink_me_bot.goods g ON g.id = cg.goods_id AND g.is_essential
                 LEFT JOIN drink_me_bot.goods_category gc ON gc.goods_id = cg.goods_id
-                WHERE cg.lang = :lang AND cg.kind = 'ingredient'
             ),
             stats AS (
-                SELECT cocktail_id,
+                SELECT cocktail_id, lang,
                        count(*) FILTER (WHERE have)     AS matched,
                        count(*) FILTER (WHERE NOT have) AS missing,
                        count(*) FILTER (WHERE alcoholic) AS alcoholic
                 FROM required
-                GROUP BY cocktail_id
+                GROUP BY cocktail_id, lang
             )
         """
     }

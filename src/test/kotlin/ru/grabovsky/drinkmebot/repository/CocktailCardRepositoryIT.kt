@@ -122,8 +122,28 @@ private fun ShouldSpec.defineTests() {
         repository.find(1L, "ru", 101)!!.author.shouldBeNull()
     }
 
-    should("return nothing for an unknown cocktail or locale") {
+    should("return nothing for an unknown cocktail or a cocktail missing from the locale and from the fallback language") {
         repository.find(1L, "ru", 999).shouldBeNull()
         repository.find(1L, "us", 100).shouldBeNull()
+    }
+
+    should("show the card in english when the cocktail is missing from the user language") {
+        jdbc.update("INSERT INTO drink_me_bot.lang (code) VALUES ('us') ON CONFLICT DO NOTHING")
+        jdbc.update("INSERT INTO drink_me_bot.cocktail (id) VALUES (103)")
+        jdbc.update("INSERT INTO drink_me_bot.cocktail_i18n (cocktail_id, lang, name, author) VALUES (103, 'us', 'Echo', '')")
+        jdbc.update("INSERT INTO drink_me_bot.cocktail_step (cocktail_id, lang, step_no, text) VALUES (103, 'us', 1, 'Stir')")
+        jdbc.update("INSERT INTO drink_me_bot.goods_i18n (goods_id, lang, name, description) VALUES (1, 'us', 'Vodka', '') ON CONFLICT DO NOTHING")
+        jdbc.update(
+            "INSERT INTO drink_me_bot.cocktail_goods (cocktail_id, lang, kind, goods_id, position, name, amount, unit_code) " +
+                "VALUES (103, 'us', 'ingredient', 1, 1, 'Vodka', 50, 'ML')",
+        )
+
+        val card = repository.find(1L, "ru", 103)!!
+
+        card.name shouldBe "Echo"
+        card.fallback shouldBe true
+        card.steps shouldBe listOf("Stir")
+        card.ingredients.single().name shouldBe "Vodka"
+        repository.find(1L, "ru", 100)!!.fallback shouldBe false
     }
 }

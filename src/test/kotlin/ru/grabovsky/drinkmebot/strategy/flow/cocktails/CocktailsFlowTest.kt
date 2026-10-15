@@ -114,6 +114,20 @@ class CocktailsFlowTest : ShouldSpec({
         message.inlineButtons.map { it.payload.data } shouldContain "M"
     }
 
+    should("mark cocktails shown in english and explain it") {
+        every { suggestions.findCocktails(7L, "ru", 1, 0, 8) } returns listOf(
+            match(10, "Алфа", listOf(GoodsRef(3, "Ликёр"))),
+            CocktailMatch(11, "Bravo", 1, 1, listOf(GoodsRef(4, "Ром")), fallback = true),
+        )
+
+        val message = editedMessage("S:1:0")
+
+        val model = message.model as CocktailsListModel
+        model.items.map { it.fallback } shouldContainExactly listOf(false, true)
+        model.hasFallback shouldBe true
+        message.inlineButtons.map { it.text } shouldContain "buttons.cocktails.cocktail(Bravo ${CocktailsFlow.FALLBACK_FLAG})"
+    }
+
     should("number cocktails continuously across pages") {
         every { suggestions.findCocktails(7L, "ru", 1, 1, 8) } returns listOf(match(20, "Чарли"))
 

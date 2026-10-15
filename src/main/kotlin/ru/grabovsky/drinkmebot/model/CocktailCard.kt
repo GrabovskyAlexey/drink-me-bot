@@ -21,4 +21,6 @@ data class CocktailCard(
     val ingredients: List<CardIngredient>,
     val gadgets: List<String>,
     val steps: List<String>,
+    /** Коктейля нет на языке пользователя: карточка показана на запасном английском. */
+    val fallback: Boolean = false,
 )

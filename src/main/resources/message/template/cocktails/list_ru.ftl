@@ -3,8 +3,12 @@
 <#if data.items?has_content>
 
 <#list data.items as item>
-${item.number?c}. <b>${item.name?html}</b><#if item.missing?has_content> — не хватает: ${item.missing?html}</#if>
+${item.number?c}. <b>${item.name?html}</b><#if item.fallback> 🇺🇸</#if><#if item.missing?has_content> — не хватает: ${item.missing?html}</#if>
 </#list>
+<#if data.hasFallback>
+
+<i>🇺🇸 — нет перевода на ваш язык, показан английский вариант.</i>
+</#if>
 <#else>
 
 Здесь пока ничего нет.
