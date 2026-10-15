@@ -53,7 +53,7 @@ enum class CocktailsStep(override val key: String) : FlowStep {
 data class CocktailsState(val unused: Boolean = false)
 
 /** [filter] - названия выбранных тегов-фильтров через запятую (пусто, если фильтра нет). */
-data class CocktailsMainModel(val selected: Int, val ready: Int, val missingOne: Int, val missingTwo: Int, val filter: String = "")
+data class CocktailsMainModel(val selected: Int, val ready: Int, val missingOne: Int, val missingTwo: Int, val filter: String = "", val strict: Boolean = false)
 
 /** [fallback] - коктейля нет на языке пользователя, название на запасном английском. */
 data class CocktailsListItem(val number: Int, val name: String, val missing: String, val fallback: Boolean = false)
@@ -186,7 +186,7 @@ class CocktailsFlow(
             FlowKeys.INGREDIENTS.openButton(i18n.i18n("buttons.cocktails.to_ingredients", locale), row = 8),
             closeButton(locale),
         )
-        return simpleMessage(CocktailsStep.MAIN, CocktailsMainModel(ingredients.selectedCount(userId), ready, missingOne, missingTwo, filterNames(locale, filter)), buttons)
+        return simpleMessage(CocktailsStep.MAIN, CocktailsMainModel(ingredients.selectedCount(userId), ready, missingOne, missingTwo, filterNames(locale, filter), filter.strict), buttons)
     }
 
     private fun sectionButton(locale: Locale, name: String, section: Int, count: Int, row: Int): FlowInlineButton? =
@@ -235,7 +235,7 @@ class CocktailsFlow(
      * кнопка «ещё один случайный»). Нет такого коктейля - возвращаем к разделу.
      */
     private fun cardMessage(userId: Long, locale: Locale, cocktailId: Int, section: Int, page: Int): Pair<CocktailsStep, FlowMessage>? {
-        val card = cards.card(userId, dataLocale.resolve(userId, locale), cocktailId)
+        val card = cards.card(userId, dataLocale.resolve(userId, locale), cocktailId, filters.get(userId).strict)
             ?: return listMessage(userId, locale, section, page)?.let { CocktailsStep.LIST to it }
         // Счётчик просмотров вторичен: сбой статистики не должен ломать показ карточки
         runCatching { stats.recordCocktailView(cocktailId) }
@@ -273,7 +273,7 @@ class CocktailsFlow(
     }
 
     private fun buyMessage(userId: Long, locale: Locale): FlowMessage {
-        val items = suggestions.whatToBuy(userId, dataLocale.resolve(userId, locale)).map { CocktailsBuyItem(it.goods.name, it.unlocksCount) }
+        val items = suggestions.whatToBuy(userId, dataLocale.resolve(userId, locale), filter = filters.get(userId)).map { CocktailsBuyItem(it.goods.name, it.unlocksCount) }
         return simpleMessage(CocktailsStep.BUY, CocktailsBuyModel(items), listOf(backButton(locale)))
     }
 

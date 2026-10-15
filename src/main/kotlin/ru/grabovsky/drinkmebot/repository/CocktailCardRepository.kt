@@ -5,6 +5,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
 import ru.grabovsky.drinkmebot.model.CardIngredient
 import ru.grabovsky.drinkmebot.model.CocktailCard
+import ru.grabovsky.drinkmebot.model.IngredientCategory
 import java.math.BigDecimal
 
 /** Данные карточки коктейля: название, теги, состав (с отметками пользователя), гаджеты и шаги. */
@@ -14,10 +15,11 @@ class CocktailCardRepository(
 ) {
 
     /** Карточка коктейля в локали [lang] (если на ней нет - на английском, `fallback`); `null`, если коктейля нет и на английском. */
-    fun find(userId: Long, lang: String, cocktailId: Int): CocktailCard? {
+    fun find(userId: Long, lang: String, cocktailId: Int, strict: Boolean = false): CocktailCard? {
         // Коктейля нет на языке пользователя - показываем запасной английский
         val shown = if (hasCocktail(cocktailId, lang)) lang else FALLBACK_LANG
         val params = MapSqlParameterSource().addValue("userId", userId).addValue("lang", shown).addValue("id", cocktailId)
+            .addValue("strict", strict)
 
         val (name, author) = jdbc.query(
             "SELECT name, author FROM drink_me_bot.cocktail_i18n WHERE cocktail_id = :id AND lang = :lang",
@@ -37,7 +39,7 @@ class CocktailCardRepository(
             """
             SELECT cg.kind, cg.name, cg.amount,
                    COALESCE(u.label, lower(cg.unit_code)) AS unit,
-                   g.is_essential,
+                   (g.is_essential OR (:strict AND gc.category IN (${IngredientCategory.OPTIONAL_NAMES.joinToString { "'$it'" }}))) AS is_essential,
                    (ui.goods_id IS NOT NULL) AS have,
                    (SELECT gi.name
                     FROM drink_me_bot.goods_substitute gs
@@ -48,6 +50,7 @@ class CocktailCardRepository(
                     LIMIT 1) AS substitute_name
             FROM drink_me_bot.cocktail_goods cg
             JOIN drink_me_bot.goods g ON g.id = cg.goods_id
+            LEFT JOIN drink_me_bot.goods_category gc ON gc.goods_id = cg.goods_id
             LEFT JOIN drink_me_bot.unit_i18n u ON u.unit_code = cg.unit_code AND u.lang = cg.lang
             LEFT JOIN drink_me_bot.user_ingredient ui ON ui.goods_id = cg.goods_id AND ui.user_id = :userId
             WHERE cg.cocktail_id = :id AND cg.lang = :lang

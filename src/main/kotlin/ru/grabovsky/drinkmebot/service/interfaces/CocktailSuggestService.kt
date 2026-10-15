@@ -13,7 +13,8 @@ interface CocktailSuggestService {
     fun counts(userId: Long, lang: String, filter: CocktailFilter = CocktailFilter.NONE): Map<Int, Int>
 
     /** Какие ингредиенты стоит докупить: каждый открывает [BuySuggestion.unlocksCount] коктейлей. */
-    fun whatToBuy(userId: Long, lang: String, limit: Int = BUY_LIMIT): List<BuySuggestion>
+    /** Из фильтра учитывается только строгий подбор (`strict`), теги не применяются. */
+    fun whatToBuy(userId: Long, lang: String, limit: Int = BUY_LIMIT, filter: CocktailFilter = CocktailFilter.NONE): List<BuySuggestion>
 
     companion object {
         const val MAX_MISSING = 2

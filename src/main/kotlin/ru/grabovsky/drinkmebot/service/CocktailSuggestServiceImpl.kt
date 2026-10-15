@@ -22,6 +22,6 @@ class CocktailSuggestServiceImpl(
     override fun counts(userId: Long, lang: String, filter: CocktailFilter): Map<Int, Int> =
         repository.countByMissing(userId, lang, MAX_MISSING, filter)
 
-    override fun whatToBuy(userId: Long, lang: String, limit: Int): List<BuySuggestion> =
-        repository.findBuySuggestions(userId, lang, limit)
+    override fun whatToBuy(userId: Long, lang: String, limit: Int, filter: CocktailFilter): List<BuySuggestion> =
+        repository.findBuySuggestions(userId, lang, limit, filter)
 }

@@ -11,4 +11,7 @@ interface CocktailFilterService {
     fun toggle(userId: Long, tag: CocktailTag): CocktailFilter
 
     fun reset(userId: Long)
+
+    /** Включает или выключает строгий подбор; возвращает новое значение. */
+    fun toggleStrict(userId: Long): Boolean
 }

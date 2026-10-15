@@ -49,6 +49,7 @@ private fun ShouldSpec.defineTests() {
             "liquibase/mvp/1.create_tables.sql",
             "liquibase/catalog/1.create_catalog_tables.sql",
             "liquibase/catalog/4.create_user_ingredient.sql",
+            "liquibase/catalog/5.create_goods_category.sql",
             "liquibase/catalog/8.create_goods_substitute.sql",
         ).forEach { script -> dataSource.connection.use { ScriptUtils.executeSqlScript(it, ClassPathResource(script)) } }
         jdbc.update("INSERT INTO drink_me_bot.lang (code) VALUES ('ru')")

@@ -37,4 +37,6 @@ data class UserSettings(
     var cocktailLang: String? = null,
     /** Выбранные теги-фильтры коктейлей (имена `CocktailTag`); пусто - без фильтра. */
     var cocktailTags: Set<String> = emptySet(),
+    /** Строгий подбор: учитывать и необязательные ингредиенты из категорий соков, фруктов и т. п. */
+    var strictMatching: Boolean = false,
 )

@@ -17,13 +17,19 @@ object EchoI18n : I18nService {
 /** Фильтр коктейлей для тестов flow: хранит выбранные теги в памяти. */
 class FakeCocktailFilterService : CocktailFilterService {
     private var tags = emptySet<CocktailTag>()
-    override fun get(userId: Long) = CocktailFilter(tags)
+    private var strict = false
+    override fun get(userId: Long) = CocktailFilter(tags, strict)
+    override fun toggleStrict(userId: Long): Boolean {
+        strict = !strict
+        return strict
+    }
     override fun toggle(userId: Long, tag: CocktailTag): CocktailFilter {
         tags = if (tag in tags) tags - tag else tags + tag
         return get(userId)
     }
     override fun reset(userId: Long) {
         tags = emptySet()
+        strict = false
     }
 }
 

@@ -26,8 +26,12 @@ enum class CocktailTag(val ruTag: String, val group: CocktailTagGroup) {
     COGNAC("на коньяке", CocktailTagGroup.BASE),
 }
 
-/** Выбранные пользователем теги; пустой фильтр ничего не отсекает. */
-data class CocktailFilter(val tags: Set<CocktailTag> = emptySet()) {
+/**
+ * Выбор пользователя для подбора: теги (пустой набор ничего не отсекает) и [strict] - строгий подбор,
+ * при котором необязательные ингредиенты из категорий соков, фруктов и т. п. тоже должны быть отмечены.
+ */
+data class CocktailFilter(val tags: Set<CocktailTag> = emptySet(), val strict: Boolean = false) {
+    /** Не выбрано ни одного тега (на [strict] не смотрит). */
     val isEmpty: Boolean get() = tags.isEmpty()
 
     companion object {

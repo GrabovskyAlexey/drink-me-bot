@@ -7,6 +7,7 @@ import ru.grabovsky.drinkmebot.model.BuySuggestion
 import ru.grabovsky.drinkmebot.model.CocktailFilter
 import ru.grabovsky.drinkmebot.model.CocktailMatch
 import ru.grabovsky.drinkmebot.model.GoodsRef
+import ru.grabovsky.drinkmebot.model.IngredientCategory
 
 /**
  * Подбор коктейлей по ингредиентам пользователя (`user_ingredient`).
@@ -20,7 +21,7 @@ class CocktailSuggestRepository(
 
     /** Страница коктейлей, которым не хватает ровно [missing] обязательных ингредиентов (у «почти готовых» есть хотя бы один). */
     fun findByMissing(userId: Long, lang: String, missing: Int, limit: Int, offset: Int, filter: CocktailFilter = CocktailFilter.NONE): List<CocktailMatch> {
-        val params = params(userId, lang).addValue("missing", missing).addValue("limit", limit).addValue("offset", offset)
+        val params = params(userId, lang, filter.strict).addValue("missing", missing).addValue("limit", limit).addValue("offset", offset)
         return jdbc.query(
             """
             $REQUIRED_CTE
@@ -57,7 +58,7 @@ class CocktailSuggestRepository(
 
     /** Сколько коктейлей в каждом разделе: ключ - число недостающих (0..[maxMissing]), пустые разделы дают 0. */
     fun countByMissing(userId: Long, lang: String, maxMissing: Int, filter: CocktailFilter = CocktailFilter.NONE): Map<Int, Int> {
-        val params = params(userId, lang).addValue("maxMissing", maxMissing)
+        val params = params(userId, lang, filter.strict).addValue("maxMissing", maxMissing)
         val counts = jdbc.query(
             """
             $REQUIRED_CTE
@@ -73,7 +74,7 @@ class CocktailSuggestRepository(
     }
 
     /** Ингредиенты, которых не хватает в «почти готовых» коктейлях (одного ингредиента), по числу открываемых коктейлей. */
-    fun findBuySuggestions(userId: Long, lang: String, limit: Int): List<BuySuggestion> =
+    fun findBuySuggestions(userId: Long, lang: String, limit: Int, filter: CocktailFilter = CocktailFilter.NONE): List<BuySuggestion> =
         jdbc.query(
             """
             $REQUIRED_CTE
@@ -87,15 +88,18 @@ class CocktailSuggestRepository(
             ORDER BY unlocks DESC, gi.name, r.goods_id
             LIMIT :limit
             """.trimIndent(),
-            params(userId, lang).addValue("limit", limit),
+            params(userId, lang, filter.strict).addValue("limit", limit),
         ) { rs, _ -> BuySuggestion(GoodsRef(rs.getInt("goods_id"), rs.getString("name")), rs.getInt("unlocks")) }
 
-    private fun params(userId: Long, lang: String) =
-        MapSqlParameterSource().addValue("userId", userId).addValue("lang", lang)
+    private fun params(userId: Long, lang: String, strict: Boolean) =
+        MapSqlParameterSource().addValue("userId", userId).addValue("lang", lang).addValue("strict", strict)
 
     private companion object {
+        val NON_ALCOHOL_SQL = IngredientCategory.NON_ALCOHOL_NAMES.joinToString { "'$it'" }
+        val OPTIONAL_SQL = IngredientCategory.OPTIONAL_NAMES.joinToString { "'$it'" }
+
         /** `required` - обязательные ингредиенты коктейлей локали и флаг наличия у пользователя, `stats` - итоги по коктейлю. */
-        const val REQUIRED_CTE = """
+        val REQUIRED_CTE = """
             WITH $COCKTAIL_LANG_CTE,
             required AS (
                 SELECT cg.cocktail_id, cl.lang, cg.goods_id, cg.position,
@@ -106,11 +110,11 @@ class CocktailSuggestRepository(
                                   OR EXISTS (SELECT 1 FROM drink_me_bot.goods_substitute gs
                                              WHERE gs.goods_id = cg.goods_id AND gs.substitute_id = ui.goods_id))
                        ) AS have,
-                       (gc.category IS DISTINCT FROM 'SYRUP') AS alcoholic
+                       (gc.category IS NULL OR gc.category NOT IN ($NON_ALCOHOL_SQL)) AS alcoholic
                 FROM cocktail_lang cl
                 JOIN drink_me_bot.cocktail_goods cg ON cg.cocktail_id = cl.cocktail_id AND cg.lang = cl.lang AND cg.kind = 'ingredient'
-                JOIN drink_me_bot.goods g ON g.id = cg.goods_id AND g.is_essential
                 LEFT JOIN drink_me_bot.goods_category gc ON gc.goods_id = cg.goods_id
+                JOIN drink_me_bot.goods g ON g.id = cg.goods_id AND (g.is_essential OR (:strict AND gc.category IN ($OPTIONAL_SQL)))
             ),
             stats AS (
                 SELECT cocktail_id, lang,

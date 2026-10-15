@@ -105,6 +105,25 @@ private fun ShouldSpec.defineTests() {
         }
     }
 
+    should("count optional goods from the optional categories only in strict mode") {
+        jdbc.update("INSERT INTO drink_me_bot.goods (id, is_essential) VALUES (9, FALSE), (10, TRUE)")
+        jdbc.update("INSERT INTO drink_me_bot.goods_i18n (goods_id, lang, name, description) VALUES (9, 'ru', 'Сок', ''), (10, 'ru', 'Джин', '')")
+        jdbc.update("INSERT INTO drink_me_bot.goods_category (goods_id, category) VALUES (9, 'JUICE')")
+        addCocktail(111, mapOf("ru" to "Джин с соком"), listOf(10 to "ingredient", 9 to "ingredient"))
+        setStock(8L, 10)
+        val strict = CocktailFilter(strict = true)
+
+        repository.findByMissing(8L, "ru", 0, 10, 0).map { it.name } shouldBe listOf("Джин с соком")
+        repository.findByMissing(8L, "ru", 0, 10, 0, strict).shouldBeEmpty()
+        val almost = repository.findByMissing(8L, "ru", 1, 10, 0, strict).single()
+        almost.name shouldBe "Джин с соком"
+        almost.missingGoods shouldBe listOf(GoodsRef(9, "Сок"))
+        repository.findBuySuggestions(8L, "ru", 5, strict).map { it.goods.name } shouldBe listOf("Сок")
+
+        setStock(8L, 10, 9)
+        repository.findByMissing(8L, "ru", 0, 10, 0, strict).map { it.name } shouldBe listOf("Джин с соком")
+    }
+
     should("filter by tags: any tag within a group, all groups together") {
         setStock(1L, 1)
         fun missingOne(vararg tags: CocktailTag) =
