@@ -52,6 +52,7 @@ private fun ShouldSpec.defineTests() {
             "liquibase/mvp/1.create_tables.sql",
             "liquibase/catalog/1.create_catalog_tables.sql",
             "liquibase/catalog/4.create_user_ingredient.sql",
+            "liquibase/catalog/5.create_goods_category.sql",
             "liquibase/stats/1.create_stats_tables.sql",
         ).forEach { script -> dataSource.connection.use { ScriptUtils.executeSqlScript(it, ClassPathResource(script)) } }
 
@@ -61,26 +62,30 @@ private fun ShouldSpec.defineTests() {
         addGoods(1, true, "Водка")
         addGoods(2, true, "Ликёр")
         addGoods(3, false, "Лайм")
+        addGoods(4, true, "Сироп")
+        jdbc.update("INSERT INTO drink_me_bot.goods_category (goods_id, category) VALUES (4, 'SYRUP')")
         addCocktail(10, "Коктейль А", 1, 3) // нужна водка
         addCocktail(11, "Коктейль Б", 1, 2) // нужны водка и ликёр
         addUser(100, 1, 2) // видит А и Б
         addUser(101, 2) // ничего не может приготовить
         addUser(102) // ингредиентов нет
+        addCocktail(12, "Лимонад с сиропом", 3, 4) // безалкогольный: сироп не алкоголь
+        addUser(103, 4) // только сироп: готового коктейля нет
     }
 
     should("count users with ingredients, marks and users without a ready cocktail") {
         val stats = repository.ingredients()
-        stats.usersWithIngredients shouldBe 2
-        stats.totalMarks shouldBe 3
-        stats.usersWithoutReady shouldBe 1
+        stats.usersWithIngredients shouldBe 3
+        stats.totalMarks shouldBe 4
+        stats.usersWithoutReady shouldBe 2
     }
 
     should("rank popular ingredients by number of users") {
-        repository.popularIngredients(10) shouldBe listOf(PopularItem("Ликёр", 2), PopularItem("Водка", 1))
+        repository.popularIngredients(10) shouldBe listOf(PopularItem("Ликёр", 2), PopularItem("Водка", 1), PopularItem("Сироп", 1))
     }
 
     should("count audience and activity by day") {
-        repository.countUsers() shouldBe 3
+        repository.countUsers() shouldBe 4
         val today = LocalDate.now()
         repository.touchActivity(100, today)
         repository.touchActivity(100, today)

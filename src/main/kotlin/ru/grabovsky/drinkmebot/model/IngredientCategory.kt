@@ -11,6 +11,7 @@ enum class IngredientCategory {
     LIQUEUR,
     WINE,
     BITTER,
+    SYRUP,
     OTHER;
 
     /** Ключ подписи в `messages_*.properties`. */

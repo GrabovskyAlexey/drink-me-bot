@@ -9,8 +9,8 @@ import ru.grabovsky.drinkmebot.model.GoodsRef
 
 /**
  * Подбор коктейлей по ингредиентам пользователя (`user_ingredient`).
- * Учитываются только обязательные ингредиенты (`goods.is_essential`); коктейли без обязательных ингредиентов
- * (безалкогольные) в подбор не попадают. Гаджеты и необязательные ингредиенты на результат не влияют.
+ * Учитываются только обязательные ингредиенты (`goods.is_essential`); в подбор попадают лишь коктейли хотя бы с одним
+ * алкогольным обязательным ингредиентом (не из категории `SYRUP`), безалкогольные показываются в своём разделе. Гаджеты и необязательные ингредиенты на результат не влияют.
  */
 @Repository
 class CocktailSuggestRepository(
@@ -32,7 +32,7 @@ class CocktailSuggestRepository(
             JOIN drink_me_bot.cocktail_i18n ci ON ci.cocktail_id = s.cocktail_id AND ci.lang = :lang
             JOIN required r ON r.cocktail_id = s.cocktail_id
             JOIN drink_me_bot.goods_i18n gi ON gi.goods_id = r.goods_id AND gi.lang = :lang
-            WHERE s.missing = :missing AND (s.missing = 0 OR s.matched >= 1)
+            WHERE s.alcoholic > 0 AND s.missing = :missing AND (s.missing = 0 OR s.matched >= 1)
             GROUP BY s.cocktail_id, ci.name, s.matched, s.missing
             ORDER BY s.matched DESC, ci.name, s.cocktail_id
             LIMIT :limit OFFSET :offset
@@ -58,7 +58,7 @@ class CocktailSuggestRepository(
             SELECT s.missing, count(*) AS cnt
             FROM stats s
             JOIN drink_me_bot.cocktail_i18n ci ON ci.cocktail_id = s.cocktail_id AND ci.lang = :lang
-            WHERE s.missing <= :maxMissing AND (s.missing = 0 OR s.matched >= 1)
+            WHERE s.alcoholic > 0 AND s.missing <= :maxMissing AND (s.missing = 0 OR s.matched >= 1)
             GROUP BY s.missing
             """.trimIndent(),
             params(userId, lang).addValue("maxMissing", maxMissing),
@@ -76,7 +76,7 @@ class CocktailSuggestRepository(
             JOIN drink_me_bot.cocktail_i18n ci ON ci.cocktail_id = s.cocktail_id AND ci.lang = :lang
             JOIN required r ON r.cocktail_id = s.cocktail_id AND NOT r.have
             JOIN drink_me_bot.goods_i18n gi ON gi.goods_id = r.goods_id AND gi.lang = :lang
-            WHERE s.missing = 1 AND s.matched >= 1
+            WHERE s.alcoholic > 0 AND s.missing = 1 AND s.matched >= 1
             GROUP BY r.goods_id, gi.name
             ORDER BY unlocks DESC, gi.name, r.goods_id
             LIMIT :limit
@@ -91,16 +91,19 @@ class CocktailSuggestRepository(
         /** `required` - обязательные ингредиенты коктейлей локали и флаг наличия у пользователя, `stats` - итоги по коктейлю. */
         const val REQUIRED_CTE = """
             WITH required AS (
-                SELECT cg.cocktail_id, cg.goods_id, cg.position, (ui.goods_id IS NOT NULL) AS have
+                SELECT cg.cocktail_id, cg.goods_id, cg.position, (ui.goods_id IS NOT NULL) AS have,
+                       (gc.category IS DISTINCT FROM 'SYRUP') AS alcoholic
                 FROM drink_me_bot.cocktail_goods cg
                 JOIN drink_me_bot.goods g ON g.id = cg.goods_id AND g.is_essential
+                LEFT JOIN drink_me_bot.goods_category gc ON gc.goods_id = cg.goods_id
                 LEFT JOIN drink_me_bot.user_ingredient ui ON ui.goods_id = cg.goods_id AND ui.user_id = :userId
                 WHERE cg.lang = :lang AND cg.kind = 'ingredient'
             ),
             stats AS (
                 SELECT cocktail_id,
                        count(*) FILTER (WHERE have)     AS matched,
-                       count(*) FILTER (WHERE NOT have) AS missing
+                       count(*) FILTER (WHERE NOT have) AS missing,
+                       count(*) FILTER (WHERE alcoholic) AS alcoholic
                 FROM required
                 GROUP BY cocktail_id
             )

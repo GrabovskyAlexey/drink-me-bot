@@ -10,6 +10,7 @@ import org.telegram.telegrambots.meta.api.objects.message.MaybeInaccessibleMessa
 import ru.grabovsky.drinkmebot.model.CategorySummary
 import ru.grabovsky.drinkmebot.model.IngredientCategory
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailCardService
+import ru.grabovsky.drinkmebot.service.interfaces.CocktailCollectionService
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailSuggestService
 import ru.grabovsky.drinkmebot.service.interfaces.I18nService
 import ru.grabovsky.drinkmebot.service.interfaces.IngredientService
@@ -64,7 +65,7 @@ class FlowNavigationTest : ShouldSpec({
     val engine = FlowEngine(
         listOf(
             IngredientsFlow(ingredients, i18n, FakeDataLocaleService()),
-            CocktailsFlow(suggestions, mockk<CocktailCardService>(), ingredients, i18n, FakeDataLocaleService(), mockk<StatsService>(relaxed = true)),
+            CocktailsFlow(suggestions, mockk<CocktailCardService>(), mockk<CocktailCollectionService>(relaxed = true), ingredients, i18n, FakeDataLocaleService(), mockk<StatsService>(relaxed = true)),
         ),
         stateService, JacksonFlowPayloadSerializer(jacksonObjectMapper()), executor,
     )

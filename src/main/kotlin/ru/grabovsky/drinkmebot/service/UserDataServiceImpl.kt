@@ -23,6 +23,7 @@ class UserDataServiceImpl(
     override fun export(userId: Long, uiLocale: Locale): ByteArray {
         val user = userRepository.findUserByUserId(userId)
         val settings = user?.profile?.settings
+        val lang = dataLocale.resolve(userId, uiLocale)
         val data = linkedMapOf(
             "user" to linkedMapOf(
                 "id" to userId,
@@ -37,7 +38,9 @@ class UserDataServiceImpl(
                 "botLanguage" to settings?.cocktailLang,
                 "autoDeleteMessages" to settings?.cleanChat,
             ),
-            "ingredients" to userData.ingredientNames(userId, dataLocale.resolve(userId, uiLocale)),
+            "ingredients" to userData.ingredientNames(userId, lang),
+            "favoriteCocktails" to userData.markedCocktails(userId, lang, favorite = true),
+            "cookedCocktails" to userData.markedCocktails(userId, lang, favorite = false),
             "activityDays" to userData.activityDays(userId).map { it.toString() },
         )
         return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(data)

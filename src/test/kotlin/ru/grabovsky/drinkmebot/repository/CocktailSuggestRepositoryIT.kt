@@ -61,7 +61,12 @@ private fun ShouldSpec.defineTests() {
     }
 
     beforeSpec {
-        listOf("liquibase/mvp/1.create_tables.sql", "liquibase/catalog/1.create_catalog_tables.sql", "liquibase/catalog/4.create_user_ingredient.sql")
+        listOf(
+            "liquibase/mvp/1.create_tables.sql",
+            "liquibase/catalog/1.create_catalog_tables.sql",
+            "liquibase/catalog/4.create_user_ingredient.sql",
+            "liquibase/catalog/5.create_goods_category.sql",
+        )
             .forEach { script -> dataSource.connection.use { ScriptUtils.executeSqlScript(it, ClassPathResource(script)) } }
         jdbc.update("INSERT INTO drink_me_bot.lang (code) VALUES ('ru'), ('us')")
         jdbc.update("INSERT INTO drink_me_bot.unit (code) VALUES ('ML')")
@@ -71,6 +76,8 @@ private fun ShouldSpec.defineTests() {
         addGoods(3, true, "Ликёр", "Liqueur")
         addGoods(4, true, "Ром", "Rum")
         addGoods(5, false, "Шейкер", "Shaker")
+        addGoods(6, true, "Сироп", "Syrup")
+        jdbc.update("INSERT INTO drink_me_bot.goods_category (goods_id, category) VALUES (6, 'SYRUP')")
 
         addCocktail(100, mapOf("ru" to "Алфа", "us" to "Alpha"), listOf(1 to "ingredient", 2 to "ingredient", 5 to "gadget"))
         addCocktail(101, mapOf("ru" to "Браво"), listOf(1 to "ingredient", 3 to "ingredient"))
@@ -79,6 +86,8 @@ private fun ShouldSpec.defineTests() {
         addCocktail(104, mapOf("ru" to "Безалкогольный"), listOf(2 to "ingredient"))
         addCocktail(105, mapOf("ru" to "Эхо"), listOf(1 to "ingredient", 3 to "ingredient"))
         addCocktail(106, mapOf("ru" to "Фокстрот"), listOf(1 to "ingredient", 4 to "ingredient"))
+        addCocktail(108, mapOf("ru" to "Лимонад с сиропом"), listOf(2 to "ingredient", 6 to "ingredient"))
+        addCocktail(109, mapOf("ru" to "Ромовый сироп"), listOf(4 to "ingredient", 6 to "ingredient"))
         addCocktail(107, mapOf("us" to "Golf"), listOf(1 to "ingredient", 4 to "ingredient"))
     }
 
@@ -118,6 +127,21 @@ private fun ShouldSpec.defineTests() {
 
         all.contains("Дельта") shouldBe false
         all.contains("Безалкогольный") shouldBe false
+    }
+
+    should("treat syrups as essential for matching but not as alcohol") {
+        setStock(3L, 6)
+
+        val sections = (0..2).flatMap { repository.findByMissing(3L, "ru", it, 10, 0) }.map { it.name }
+
+        // 108 только с сиропом (безалкогольный) в подбор не попадает, 109 с ромом и сиропом - не хватает рома
+        sections.contains("Лимонад с сиропом") shouldBe false
+        sections.contains("Ромовый сироп") shouldBe true
+        repository.findByMissing(3L, "ru", missing = 1, limit = 10, offset = 0).single { it.name == "Ромовый сироп" }.missingGoods shouldBe listOf(rum)
+        repository.findByMissing(3L, "ru", missing = 0, limit = 10, offset = 0).shouldBeEmpty()
+
+        setStock(3L, 4, 6)
+        repository.findByMissing(3L, "ru", missing = 0, limit = 10, offset = 0).map { it.name } shouldBe listOf("Ромовый сироп", "Дельта")
     }
 
     should("page results") {
