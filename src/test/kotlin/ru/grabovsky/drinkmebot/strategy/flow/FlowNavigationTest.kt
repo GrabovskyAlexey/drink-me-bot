@@ -65,7 +65,7 @@ class FlowNavigationTest : ShouldSpec({
     val engine = FlowEngine(
         listOf(
             IngredientsFlow(ingredients, i18n, FakeDataLocaleService()),
-            CocktailsFlow(suggestions, mockk<CocktailCardService>(), mockk<CocktailCollectionService>(relaxed = true), ingredients, i18n, FakeDataLocaleService(), mockk<StatsService>(relaxed = true)),
+            CocktailsFlow(suggestions, mockk<CocktailCardService>(), mockk<CocktailCollectionService>(relaxed = true), ingredients, i18n, FakeDataLocaleService(), mockk<StatsService>(relaxed = true), FakeCocktailFilterService()),
         ),
         stateService, JacksonFlowPayloadSerializer(jacksonObjectMapper()), executor,
     )

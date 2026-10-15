@@ -1,6 +1,9 @@
 🍸 <b>Что приготовить</b>
 
 Отмечено ингредиентов: <b>${data.selected?c}</b>.
+<#if data.filter?has_content>
+🔎 Фильтр: <b>${data.filter?html}</b>
+</#if>
 <#if data.selected == 0>
 
 Вы ещё ничего не отметили. Откройте /ingredients и выберите, что у вас есть.

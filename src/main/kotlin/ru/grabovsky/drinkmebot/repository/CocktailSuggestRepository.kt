@@ -4,6 +4,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
 import ru.grabovsky.drinkmebot.model.BuySuggestion
+import ru.grabovsky.drinkmebot.model.CocktailFilter
 import ru.grabovsky.drinkmebot.model.CocktailMatch
 import ru.grabovsky.drinkmebot.model.GoodsRef
 
@@ -18,8 +19,9 @@ class CocktailSuggestRepository(
 ) {
 
     /** Страница коктейлей, которым не хватает ровно [missing] обязательных ингредиентов (у «почти готовых» есть хотя бы один). */
-    fun findByMissing(userId: Long, lang: String, missing: Int, limit: Int, offset: Int): List<CocktailMatch> =
-        jdbc.query(
+    fun findByMissing(userId: Long, lang: String, missing: Int, limit: Int, offset: Int, filter: CocktailFilter = CocktailFilter.NONE): List<CocktailMatch> {
+        val params = params(userId, lang).addValue("missing", missing).addValue("limit", limit).addValue("offset", offset)
+        return jdbc.query(
             """
             $REQUIRED_CTE
             SELECT s.cocktail_id,
@@ -33,12 +35,12 @@ class CocktailSuggestRepository(
             JOIN drink_me_bot.cocktail_i18n ci ON ci.cocktail_id = s.cocktail_id AND ci.lang = s.lang
             JOIN required r ON r.cocktail_id = s.cocktail_id
             JOIN drink_me_bot.goods_i18n gi ON gi.goods_id = r.goods_id AND gi.lang = s.lang
-            WHERE s.alcoholic > 0 AND s.missing = :missing AND (s.missing = 0 OR s.matched >= 1)
+            WHERE s.alcoholic > 0 AND s.missing = :missing AND (s.missing = 0 OR s.matched >= 1)${filter.whereClause("s.cocktail_id", params)}
             GROUP BY s.cocktail_id, ci.name, s.lang, s.matched, s.missing
             ORDER BY s.matched DESC, ci.name, s.cocktail_id
             LIMIT :limit OFFSET :offset
             """.trimIndent(),
-            params(userId, lang).addValue("missing", missing).addValue("limit", limit).addValue("offset", offset),
+            params,
         ) { rs, _ ->
             val ids = rs.getArray("missing_ids")?.let { (it.array as Array<*>).map { id -> (id as Number).toInt() } }.orEmpty()
             val names = rs.getArray("missing_names")?.let { (it.array as Array<*>).map { name -> name as String } }.orEmpty()
@@ -51,19 +53,21 @@ class CocktailSuggestRepository(
                 fallback = rs.getBoolean("fallback"),
             )
         }
+    }
 
     /** Сколько коктейлей в каждом разделе: ключ - число недостающих (0..[maxMissing]), пустые разделы дают 0. */
-    fun countByMissing(userId: Long, lang: String, maxMissing: Int): Map<Int, Int> {
+    fun countByMissing(userId: Long, lang: String, maxMissing: Int, filter: CocktailFilter = CocktailFilter.NONE): Map<Int, Int> {
+        val params = params(userId, lang).addValue("maxMissing", maxMissing)
         val counts = jdbc.query(
             """
             $REQUIRED_CTE
             SELECT s.missing, count(*) AS cnt
             FROM stats s
             JOIN drink_me_bot.cocktail_i18n ci ON ci.cocktail_id = s.cocktail_id AND ci.lang = s.lang
-            WHERE s.alcoholic > 0 AND s.missing <= :maxMissing AND (s.missing = 0 OR s.matched >= 1)
+            WHERE s.alcoholic > 0 AND s.missing <= :maxMissing AND (s.missing = 0 OR s.matched >= 1)${filter.whereClause("s.cocktail_id", params)}
             GROUP BY s.missing
             """.trimIndent(),
-            params(userId, lang).addValue("maxMissing", maxMissing),
+            params,
         ) { rs, _ -> rs.getInt("missing") to rs.getInt("cnt") }.toMap()
         return (0..maxMissing).associateWith { counts[it] ?: 0 }
     }

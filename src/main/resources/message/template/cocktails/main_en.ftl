@@ -1,6 +1,9 @@
 🍸 <b>What to make</b>
 
 Ingredients marked: <b>${data.selected?c}</b>.
+<#if data.filter?has_content>
+🔎 Filter: <b>${data.filter?html}</b>
+</#if>
 <#if data.selected == 0>
 
 You have not marked anything yet. Open /ingredients and choose what you have.

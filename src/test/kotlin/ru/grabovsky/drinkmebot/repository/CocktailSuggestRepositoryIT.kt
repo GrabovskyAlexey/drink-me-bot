@@ -10,6 +10,8 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.jdbc.datasource.init.ScriptUtils
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.postgresql.PostgreSQLContainer
+import ru.grabovsky.drinkmebot.model.CocktailFilter
+import ru.grabovsky.drinkmebot.model.CocktailTag
 import ru.grabovsky.drinkmebot.model.GoodsRef
 
 /** Проверяет SQL подбора на настоящем PostgreSQL с маленьким набором данных. Без Docker тесты не создаются. */
@@ -94,6 +96,34 @@ private fun ShouldSpec.defineTests() {
         addCocktail(108, mapOf("ru" to "Лимонад с сиропом"), listOf(2 to "ingredient", 6 to "ingredient"))
         addCocktail(109, mapOf("ru" to "Ромовый сироп"), listOf(4 to "ingredient", 6 to "ingredient"))
         addCocktail(107, mapOf("us" to "Golf"), listOf(3 to "ingredient", 4 to "ingredient"))
+
+        // Теги (русский каталог): Алфа - крепкие; Браво - крепкие, кислые; Фокстрот - слабоалкогольные, сладкие
+        mapOf(100 to listOf("крепкие"), 101 to listOf("крепкие", "кислые"), 106 to listOf("слабоалкогольные", "сладкие")).forEach { (id, tags) ->
+            tags.forEachIndexed { index, tag ->
+                jdbc.update("INSERT INTO drink_me_bot.cocktail_tag (cocktail_id, lang, position, tag) VALUES (?, 'ru', ?, ?)", id, index + 1, tag)
+            }
+        }
+    }
+
+    should("filter by tags: any tag within a group, all groups together") {
+        setStock(1L, 1)
+        fun missingOne(vararg tags: CocktailTag) =
+            repository.findByMissing(1L, "ru", 1, 10, 0, CocktailFilter(tags.toSet())).map { it.name }
+
+        missingOne(CocktailTag.STRONG) shouldBe listOf("Браво")
+        missingOne(CocktailTag.STRONG, CocktailTag.LOW_ALCOHOL) shouldBe listOf("Браво", "Фокстрот")
+        missingOne(CocktailTag.STRONG, CocktailTag.SOUR) shouldBe listOf("Браво")
+        missingOne(CocktailTag.STRONG, CocktailTag.SWEET).shouldBeEmpty()
+        repository.findByMissing(1L, "ru", 1, 10, 0, CocktailFilter.NONE).size shouldBe 3
+    }
+
+    should("apply the tag filter to the section counts and in other locales") {
+        setStock(1L, 1)
+        val strong = CocktailFilter(setOf(CocktailTag.STRONG))
+
+        repository.countByMissing(1L, "ru", 2, strong) shouldBe mapOf(0 to 1, 1 to 1, 2 to 0)
+        repository.findByMissing(1L, "us", 0, 10, 0, strong).map { it.name } shouldBe listOf("Alpha")
+        repository.findByMissing(1L, "us", 0, 10, 0, CocktailFilter(setOf(CocktailTag.SOUR))).shouldBeEmpty()
     }
 
     should("find cocktails that can be made right now, ignoring non-essential goods and gadgets") {

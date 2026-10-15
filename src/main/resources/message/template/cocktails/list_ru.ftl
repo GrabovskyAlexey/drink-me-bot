@@ -1,5 +1,8 @@
 <b>${data.title?html}</b> (${data.total?c})<#if (data.pages > 1)>
 Страница ${data.page?c} из ${data.pages?c}</#if>
+<#if data.filter?has_content>
+🔎 Фильтр: ${data.filter?html}
+</#if>
 <#if data.items?has_content>
 
 <#list data.items as item>

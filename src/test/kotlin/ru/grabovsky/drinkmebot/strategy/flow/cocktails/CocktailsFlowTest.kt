@@ -12,6 +12,8 @@ import io.mockk.mockk
 import io.mockk.verify
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery
 import ru.grabovsky.drinkmebot.model.BuySuggestion
+import ru.grabovsky.drinkmebot.model.CocktailFilter
+import ru.grabovsky.drinkmebot.model.CocktailTag
 import ru.grabovsky.drinkmebot.model.CardIngredient
 import ru.grabovsky.drinkmebot.model.CocktailCard
 import ru.grabovsky.drinkmebot.model.CocktailMatch
@@ -31,6 +33,7 @@ import ru.grabovsky.drinkmebot.strategy.flow.core.engine.EditMessageAction
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowContext
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowStartContext
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowStateHolder
+import ru.grabovsky.drinkmebot.strategy.flow.FakeCocktailFilterService
 import ru.grabovsky.drinkmebot.strategy.flow.FakeDataLocaleService
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.SendMessageAction
 import java.util.Locale
@@ -45,7 +48,8 @@ class CocktailsFlowTest : ShouldSpec({
         override fun i18n(code: String, locale: Locale, default: String?, vararg args: Any?) =
             if (args.isEmpty()) code else "$code(${args.joinToString(",")})"
     }
-    val flow = CocktailsFlow(suggestions, cards, collections, ingredients, i18n, FakeDataLocaleService(), mockk<StatsService>(relaxed = true))
+    val filters = FakeCocktailFilterService()
+    val flow = CocktailsFlow(suggestions, cards, collections, ingredients, i18n, FakeDataLocaleService(), mockk<StatsService>(relaxed = true), filters)
     val ru = Locale.forLanguageTag("ru")
     val tgUser = mockk<TgUser> { every { id } returns 7L }
     val callback = mockk<CallbackQuery> { every { id } returns "cb1" }
@@ -61,6 +65,7 @@ class CocktailsFlowTest : ShouldSpec({
 
     beforeTest {
         clearMocks(suggestions, cards, ingredients, collections)
+        filters.reset(7L)
         every { collections.nonAlcoholicCount("ru") } returns 0
         every { collections.favoritesCount(7L, "ru") } returns 0
         every { collections.marks(7L, any()) } returns CocktailMarks()
@@ -79,10 +84,11 @@ class CocktailsFlowTest : ShouldSpec({
             "buttons.cocktails.missing1(12)",
             "buttons.cocktails.random",
             "buttons.cocktails.buy",
+            "buttons.cocktails.filter(0)",
             "buttons.cocktails.to_ingredients",
             "buttons.common.close",
         )
-        message.inlineButtons.map { it.payload.data } shouldContainExactly listOf("S:0:0", "S:1:0", "R", "B", "OPEN", "CLOSE")
+        message.inlineButtons.map { it.payload.data } shouldContainExactly listOf("S:0:0", "S:1:0", "R", "B", "FL", "OPEN", "CLOSE")
         message.inlineButtons.first { it.payload.data == "OPEN" }.payload.flow shouldBe "INGREDIENTS"
     }
 
@@ -92,7 +98,7 @@ class CocktailsFlowTest : ShouldSpec({
 
         val message = (flow.start(FlowStartContext(tgUser, ru)).actions.single() as SendMessageAction).message
 
-        message.inlineButtons.map { it.payload.data } shouldContainExactly listOf("OPEN", "CLOSE")
+        message.inlineButtons.map { it.payload.data } shouldContainExactly listOf("FL", "OPEN", "CLOSE")
     }
 
     should("list a section with the missing ingredients and open buttons") {
@@ -126,6 +132,40 @@ class CocktailsFlowTest : ShouldSpec({
         model.items.map { it.fallback } shouldContainExactly listOf(false, true)
         model.hasFallback shouldBe true
         message.inlineButtons.map { it.text } shouldContain "buttons.cocktails.cocktail(Bravo ${CocktailsFlow.FALLBACK_FLAG})"
+    }
+
+    should("toggle filter tags on the filter screen and reset them") {
+        val open = editedMessage("FL")
+        open.inlineButtons.count { it.text.startsWith("buttons.common.unselected") } shouldBe CocktailTag.entries.size
+        open.inlineButtons.none { it.text == "buttons.cocktails.filter.reset" } shouldBe true
+
+        val toggled = editedMessage("T:SOUR", CocktailsStep.FILTER)
+        toggled.inlineButtons.map { it.text } shouldContain "buttons.common.selected(cocktails.tag.sour)"
+        toggled.inlineButtons.map { it.text } shouldContain "buttons.cocktails.filter.reset"
+        filters.get(7L).tags shouldBe setOf(CocktailTag.SOUR)
+
+        editedMessage("X", CocktailsStep.FILTER).inlineButtons.none { it.text == "buttons.cocktails.filter.reset" } shouldBe true
+        filters.get(7L).isEmpty shouldBe true
+        flow.onCallback(context(CocktailsStep.FILTER), callback, "T:UNKNOWN").shouldBeNull()
+    }
+
+    should("apply the chosen filter to the counts, sections and the random cocktail") {
+        filters.toggle(7L, CocktailTag.STRONG)
+        val filter = CocktailFilter(setOf(CocktailTag.STRONG))
+        every { suggestions.counts(7L, "ru", filter) } returns mapOf(0 to 1, 1 to 2, 2 to 0)
+        every { collections.nonAlcoholicCount("ru", filter) } returns 0
+        every { collections.favoritesCount(7L, "ru", filter) } returns 0
+        every { suggestions.findCocktails(7L, "ru", 1, 0, 8, filter) } returns listOf(match(10, "Алфа"))
+        every { collections.randomReady(7L, "ru", any(), filter) } returns match(10, "Алфа")
+
+        val main = editedMessage("M")
+        (main.model as CocktailsMainModel).filter shouldBe "cocktails.tag.strong"
+        main.inlineButtons.map { it.text } shouldContain "buttons.cocktails.filter.active(1)"
+        val list = editedMessage("S:1:0").model as CocktailsListModel
+        list.total shouldBe 2
+        list.filter shouldBe "cocktails.tag.strong"
+        every { cards.card(7L, "ru", 10) } returns CocktailCard(10, "Алфа", null, emptyList(), emptyList(), emptyList(), emptyList())
+        editedMessage("R")
     }
 
     should("number cocktails continuously across pages") {
@@ -187,7 +227,7 @@ class CocktailsFlowTest : ShouldSpec({
 
         val buttons = (flow.start(FlowStartContext(tgUser, ru)).actions.single() as SendMessageAction).message.inlineButtons
 
-        buttons.map { it.payload.data } shouldContainExactly listOf("S:0:0", "S:1:0", "S:10:0", "S:11:0", "R", "B", "OPEN", "CLOSE")
+        buttons.map { it.payload.data } shouldContainExactly listOf("S:0:0", "S:1:0", "S:10:0", "S:11:0", "R", "B", "FL", "OPEN", "CLOSE")
         buttons.map { it.text } shouldContain "buttons.cocktails.nonalcoholic(41)"
         buttons.map { it.text } shouldContain "buttons.cocktails.favorites(2)"
     }
