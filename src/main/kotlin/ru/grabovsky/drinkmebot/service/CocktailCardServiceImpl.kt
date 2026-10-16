@@ -9,6 +9,6 @@ import ru.grabovsky.drinkmebot.service.interfaces.CocktailCardService
 class CocktailCardServiceImpl(
     private val repository: CocktailCardRepository,
 ) : CocktailCardService {
-    override fun card(userId: Long, lang: String, cocktailId: Int, strict: Boolean): CocktailCard? =
-        repository.find(userId, lang, cocktailId, strict)
+    override fun card(userId: Long, lang: String, cocktailId: Int, strict: Boolean, portions: Int): CocktailCard? =
+        repository.find(userId, lang, cocktailId, strict, portions)
 }

@@ -20,7 +20,9 @@ enum class IngredientCategory(val alcohol: Boolean = true, val optional: Boolean
     JUICE(alcohol = false, optional = true),
     MIXER(alcohol = false, optional = true),
     FRUIT(alcohol = false, optional = true),
-    PANTRY(alcohol = false, optional = true);
+    PANTRY(alcohol = false, optional = true),
+    /** Гаджеты и посуда: отмечаются в инвентаре и показываются в карточке, на подбор не влияют (`goods.is_essential` FALSE). */
+    GADGET(alcohol = false);
 
     /** Ключ подписи в `messages_*.properties`. */
     val messageKey: String get() = "ingredients.category.${name.lowercase()}"

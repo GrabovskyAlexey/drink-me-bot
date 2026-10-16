@@ -35,6 +35,23 @@ class CocktailsTemplatesTest : ShouldSpec({
         render(CocktailsStep.MAIN, de, CocktailsMainModel(3, 1, 2, 3)) shouldContain "Was mixen"
     }
 
+    should("split a card into the head with ingredients and the tail with equipment and steps") {
+        listOf(ru, en, de, pt).forEach { locale ->
+            val head = render(CocktailsStep.CARD, locale, card.copy(part = "HEAD"))
+            val tail = render(CocktailsStep.CARD, locale, card.copy(part = "TAIL"))
+
+            head shouldContain "Водка — 50 мл"
+            head shouldNotContain "Шейкер"
+            tail shouldContain "Шейкер, Стрейнер"
+            tail shouldContain "1. Смешай"
+            tail shouldNotContain "Водка"
+        }
+    }
+
+    should("keep the second message of a photo card non-empty when there are no steps and equipment") {
+        render(CocktailsStep.CARD, ru, card.copy(part = "TAIL", gadgets = "", steps = emptyList())).shouldNotBeBlank()
+    }
+
     should("ask to mark ingredients when nothing is selected") {
         render(CocktailsStep.MAIN, ru, CocktailsMainModel(0, 0, 0, 0)) shouldContain "/ingredients"
         render(CocktailsStep.MAIN, ru, CocktailsMainModel(0, 0, 0, 0)) shouldNotContain "Можно приготовить"

@@ -15,5 +15,6 @@
     <include file="liquibase/catalog/7.syrups_essential.sql"/>
     <include file="liquibase/catalog/8.create_goods_substitute.sql"/>
     <include file="liquibase/catalog/9.optional_goods_categories.sql"/>
+    <include file="liquibase/catalog/10.gadget_category.sql"/>
 
 </databaseChangeLog>
