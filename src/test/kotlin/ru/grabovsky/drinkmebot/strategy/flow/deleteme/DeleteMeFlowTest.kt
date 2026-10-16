@@ -58,6 +58,6 @@ class DeleteMeFlowTest : ShouldSpec({
         val renderer = FlowTemplateRenderer(FreemarkerConfig().freeMarkerConfigurer().also { it.afterPropertiesSet() })
         renderer.render(FlowKeys.DELETE_ME, "menu", ru) shouldContain "Мои данные"
         renderer.render(FlowKeys.DELETE_ME, "confirm", Locale.ENGLISH) shouldContain "cannot be undone"
-        renderer.render(FlowKeys.DELETE_ME, "done", Locale.forLanguageTag("de")) shouldContain "deleted"
+        renderer.render(FlowKeys.DELETE_ME, "done", Locale.forLanguageTag("pt")) shouldContain "deleted"
     }
 })

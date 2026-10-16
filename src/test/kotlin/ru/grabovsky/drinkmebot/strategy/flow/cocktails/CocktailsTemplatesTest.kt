@@ -13,6 +13,7 @@ class CocktailsTemplatesTest : ShouldSpec({
     val renderer = FlowTemplateRenderer(FreemarkerConfig().freeMarkerConfigurer().also { it.afterPropertiesSet() })
     val ru = Locale.forLanguageTag("ru")
     val en = Locale.forLanguageTag("en")
+    val pt = Locale.forLanguageTag("pt")
     val de = Locale.forLanguageTag("de")
 
     fun render(step: CocktailsStep, locale: Locale, model: Any?) = renderer.render(FlowKeys.COCKTAILS, step.key, locale, model)
@@ -24,13 +25,14 @@ class CocktailsTemplatesTest : ShouldSpec({
     )
 
     should("render every step in ru, en and an unsupported locale") {
-        listOf(ru, en, de).forEach { locale ->
+        listOf(ru, en, de, pt).forEach { locale ->
             render(CocktailsStep.MAIN, locale, CocktailsMainModel(3, 1, 2, 3)).shouldNotBeBlank()
             render(CocktailsStep.LIST, locale, CocktailsListModel("T", 12, 1, 2, listOf(CocktailsListItem(1, "A", "B, C")))).shouldNotBeBlank()
             render(CocktailsStep.CARD, locale, card).shouldNotBeBlank()
             render(CocktailsStep.BUY, locale, CocktailsBuyModel(listOf(CocktailsBuyItem("Ликёр", 7)))).shouldNotBeBlank()
         }
-        render(CocktailsStep.MAIN, de, CocktailsMainModel(3, 1, 2, 3)) shouldContain "What to make"
+        render(CocktailsStep.MAIN, pt, CocktailsMainModel(3, 1, 2, 3)) shouldContain "What to make"
+        render(CocktailsStep.MAIN, de, CocktailsMainModel(3, 1, 2, 3)) shouldContain "Was mixen"
     }
 
     should("ask to mark ingredients when nothing is selected") {

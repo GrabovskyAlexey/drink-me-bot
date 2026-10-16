@@ -13,10 +13,16 @@ object LocaleUtils {
     }
 
     /**
-     * Язык интерфейса для выбранного языка бота (код локали данных): русский для `ru`, английский для остальных.
-     * Полный перевод интерфейса на остальные языки - в бэклоге.
+     * Язык интерфейса для выбранного языка бота (код локали данных): свой перевод у `ru`, `ua` (украинский, `uk` в Telegram),
+     * `de`, `es`, `fr`, `it`; для `us` и `uk` (британский английский) - английский.
      */
-    fun interfaceLocale(dataLang: String): Locale = if (dataLang == "ru") Locale.forLanguageTag("ru") else Locale.forLanguageTag("en")
+    fun interfaceLocale(dataLang: String): Locale = Locale.forLanguageTag(
+        when (dataLang) {
+            "ua" -> "uk"
+            "ru", "de", "es", "fr", "it" -> dataLang
+            else -> "en"
+        },
+    )
 
     private fun resolve(language: String?): Locale {
         if (language.isNullOrBlank()) {
@@ -28,6 +34,7 @@ object LocaleUtils {
         if (locale != null && locale.language.isNotBlank()) {
             return when (locale.language) {
                 "ru" -> Locale.forLanguageTag("ru")
+                "uk" -> Locale.forLanguageTag("en") // украинский интерфейс отключён
                 else -> Locale.forLanguageTag(locale.language)
             }
         }

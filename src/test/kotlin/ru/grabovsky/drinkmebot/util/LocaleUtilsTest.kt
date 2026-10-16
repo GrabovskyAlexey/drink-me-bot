@@ -22,11 +22,21 @@ class LocaleUtilsTest : ShouldSpec({
         LocaleUtils.resolve(null) shouldBe ru
     }
 
-    should("use russian interface for the chosen russian and english for any other chosen language") {
+    should("use the interface language of the chosen bot language") {
         LocaleUtils.resolve(user("en", chosen = "ru")) shouldBe ru
-        DataLocale.SUPPORTED.filter { it != "ru" }.forEach {
-            LocaleUtils.resolve(user("ru", chosen = it)) shouldBe en
+        listOf("us", "uk").forEach { LocaleUtils.resolve(user("ru", chosen = it)) shouldBe en }
+        mapOf("de" to "de", "es" to "es", "fr" to "fr", "it" to "it").forEach { (chosen, interfaceLanguage) ->
+            LocaleUtils.resolve(user("ru", chosen = chosen)) shouldBe Locale.forLanguageTag(interfaceLanguage)
         }
+    }
+
+    should("show english interface to telegram uk users while Ukrainian is disabled") {
+        LocaleUtils.resolve(user("uk")) shouldBe en
+        LocaleUtils.resolve(user("ru", chosen = "ua")) shouldBe ru
+    }
+
+    should("map every interface language back to the same data language") {
+        DataLocale.SUPPORTED_ORDERED.filter { it != "uk" }.forEach { DataLocale.of(LocaleUtils.interfaceLocale(it)) shouldBe it }
     }
 
     should("ignore a stored language that is not supported") {
