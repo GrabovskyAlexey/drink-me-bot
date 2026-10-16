@@ -12,7 +12,7 @@ class SettingsTemplatesTest : ShouldSpec({
     val model = SettingsMainModel("🇩🇪 Deutsch")
 
     should("show the current language in ru, en and an unsupported locale") {
-        listOf("ru", "en", "de").forEach {
+        listOf("ru", "en", "de", "uk", "es", "fr", "it", "pt").forEach {
             renderer.render(FlowKeys.SETTINGS, "main", Locale.forLanguageTag(it), model) shouldContain "🇩🇪 Deutsch"
         }
     }
@@ -20,6 +20,7 @@ class SettingsTemplatesTest : ShouldSpec({
     should("use the language of the locale and fall back to english") {
         renderer.render(FlowKeys.SETTINGS, "main", Locale.forLanguageTag("ru"), model) shouldContain "Язык:"
         renderer.render(FlowKeys.SETTINGS, "main", Locale.forLanguageTag("en"), model) shouldContain "Language:"
-        renderer.render(FlowKeys.SETTINGS, "main", Locale.forLanguageTag("it"), model) shouldContain "Language:"
+        renderer.render(FlowKeys.SETTINGS, "main", Locale.forLanguageTag("pt"), model) shouldContain "Language:"
+        renderer.render(FlowKeys.SETTINGS, "main", Locale.forLanguageTag("it"), model) shouldContain "Lingua:"
     }
 })

@@ -61,25 +61,23 @@ class SettingsFlowTest : ShouldSpec({
         pressed("STRICT").inlineButtons.single { it.payload.data == "STRICT" }.text shouldBe "buttons.settings.strict.off"
     }
 
-    should("show eight flags in two rows right on the main screen, then auto-delete and close") {
+    should("show auto and seven flags in a 4x2 grid on the main screen, then auto-delete and close") {
         val buttons = startMessage().inlineButtons
 
         buttons.map { it.payload.data } shouldContainExactly
-            listOf("SL:ru", "SL:ua", "SL:us", "SL:uk", "SL:de", "SL:es", "SL:fr", "SL:it", "CLEAN", "STRICT", "CLOSE")
+            listOf("AUTO", "SL:ru", "SL:us", "SL:uk", "SL:de", "SL:es", "SL:fr", "SL:it", "CLEAN", "STRICT", "CLOSE")
         buttons.take(8).map { it.row to it.col } shouldContainExactly
             listOf(0 to 0, 0 to 1, 0 to 2, 0 to 3, 1 to 0, 1 to 1, 1 to 2, 1 to 3)
-        buttons.take(8).map { it.text.removePrefix("✅ ") } shouldContainExactly
-            listOf("🇷🇺", "🇺🇦", "🇺🇸", "🇬🇧", "🇩🇪", "🇪🇸", "🇫🇷", "🇮🇹")
+        buttons.drop(1).take(7).map { it.text.removePrefix("✅ ") } shouldContainExactly
+            listOf("🇷🇺", "🇺🇸", "🇬🇧", "🇩🇪", "🇪🇸", "🇫🇷", "🇮🇹")
     }
 
-    should("offer to return to the Telegram language only after a language is chosen") {
+    should("mark auto only while no language is chosen") {
+        startMessage().inlineButtons.first { it.payload.data == "AUTO" }.text shouldBe "✅ buttons.settings.auto"
+
         dataLocale.choose(7L, "de")
 
-        val buttons = startMessage().inlineButtons
-
-        buttons.map { it.payload.data }.takeLast(4) shouldContainExactly listOf("AUTO", "CLEAN", "STRICT", "CLOSE")
-        buttons.single { it.payload.data == "AUTO" }.row shouldBe 2
-        buttons.single { it.payload.data == "CLEAN" }.row shouldBe 3
+        startMessage().inlineButtons.first { it.payload.data == "AUTO" }.text shouldBe "buttons.settings.auto"
     }
 
     should("reset the chosen language and redraw in the Telegram language") {
@@ -88,12 +86,12 @@ class SettingsFlowTest : ShouldSpec({
         val result = flow.onCallback(context(en), callback, "AUTO")!!
 
         dataLocale.chosen(7L).shouldBeNull()
-        (result.actions.first() as EditMessageAction).message.inlineButtons.none { it.payload.data == "AUTO" } shouldBe true
+        (result.actions.first() as EditMessageAction).message.inlineButtons.first { it.payload.data == "AUTO" }.text shouldBe "✅ buttons.settings.auto"
     }
 
     should("mark the language detected from Telegram while nothing is chosen") {
-        startMessage(ru).inlineButtons.filter { it.text.startsWith("✅") }.map { it.payload.data } shouldContainExactly listOf("SL:ru")
-        startMessage(en).inlineButtons.filter { it.text.startsWith("✅") }.map { it.payload.data } shouldContainExactly listOf("SL:us")
+        startMessage(ru).inlineButtons.filter { it.text.startsWith("✅") && it.payload.data != "AUTO" }.map { it.payload.data } shouldContainExactly listOf("SL:ru")
+        startMessage(en).inlineButtons.filter { it.text.startsWith("✅") && it.payload.data != "AUTO" }.map { it.payload.data } shouldContainExactly listOf("SL:us")
     }
 
     should("mark the chosen language and show its name") {
@@ -101,7 +99,7 @@ class SettingsFlowTest : ShouldSpec({
 
         val message = startMessage()
 
-        message.inlineButtons.filter { it.text.startsWith("✅") }.map { it.text } shouldContainExactly listOf("✅ 🇩🇪")
+        message.inlineButtons.filter { it.text.startsWith("✅") && it.payload.data != "AUTO" }.map { it.text } shouldContainExactly listOf("✅ 🇩🇪")
         (message.model as SettingsMainModel).language shouldBe "settings.language.de"
     }
 
@@ -110,8 +108,8 @@ class SettingsFlowTest : ShouldSpec({
         val message = (result.actions.first() as EditMessageAction).message
 
         dataLocale.chosen(7L) shouldBe "de"
-        message.locale shouldBe en
-        message.inlineButtons.filter { it.text.startsWith("✅") }.map { it.payload.data } shouldContainExactly listOf("SL:de")
+        message.locale shouldBe Locale.forLanguageTag("de")
+        message.inlineButtons.filter { it.text.startsWith("✅") && it.payload.data != "AUTO" }.map { it.payload.data } shouldContainExactly listOf("SL:de")
     }
 
     should("switch the interface back to russian when russian is chosen") {

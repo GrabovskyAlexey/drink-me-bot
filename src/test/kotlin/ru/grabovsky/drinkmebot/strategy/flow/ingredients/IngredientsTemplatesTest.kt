@@ -15,12 +15,13 @@ class IngredientsTemplatesTest : ShouldSpec({
     val renderer = FlowTemplateRenderer(configurer)
     val ru = Locale.forLanguageTag("ru")
     val en = Locale.forLanguageTag("en")
+    val pt = Locale.forLanguageTag("pt")
     val de = Locale.forLanguageTag("de")
 
     fun render(step: IngredientsStep, locale: Locale, model: Any?) = renderer.render(FlowKeys.INGREDIENTS, step.key, locale, model)
 
     should("render every step in ru and en") {
-        listOf(ru, en).forEach { locale ->
+        listOf(ru, en, de, pt).forEach { locale ->
             render(IngredientsStep.MAIN, locale, IngredientsMainModel(3)).shouldNotBeBlank()
             render(IngredientsStep.LIST, locale, IngredientsListModel("Водка", 1, 4, 1, 1, false)).shouldNotBeBlank()
             render(IngredientsStep.SEARCH_WAIT, locale, null).shouldNotBeBlank()
@@ -31,7 +32,8 @@ class IngredientsTemplatesTest : ShouldSpec({
     should("use the language of the locale and fall back to english for unsupported ones") {
         render(IngredientsStep.MAIN, ru, IngredientsMainModel(3)) shouldContain "Мои ингредиенты"
         render(IngredientsStep.MAIN, en, IngredientsMainModel(3)) shouldContain "My ingredients"
-        render(IngredientsStep.MAIN, de, IngredientsMainModel(3)) shouldContain "My ingredients"
+        render(IngredientsStep.MAIN, pt, IngredientsMainModel(3)) shouldContain "My ingredients"
+        render(IngredientsStep.MAIN, de, IngredientsMainModel(3)) shouldContain "Meine Zutaten"
     }
 
     should("escape html in the list title and show the number of pages") {

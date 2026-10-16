@@ -10,8 +10,9 @@ class DataLocaleTest : ShouldSpec({
         DataLocale.of(Locale.forLanguageTag("en-GB")) shouldBe "us"
     }
 
-    should("map telegram uk (Ukrainian) to ua") {
-        DataLocale.of(Locale.forLanguageTag("uk")) shouldBe "ua"
+    should("treat telegram uk (Ukrainian) as unsupported while it is disabled") {
+        DataLocale.of(Locale.forLanguageTag("uk")) shouldBe "us"
+        ("ua" in DataLocale.SUPPORTED) shouldBe false
     }
 
     should("keep other supported languages as is") {

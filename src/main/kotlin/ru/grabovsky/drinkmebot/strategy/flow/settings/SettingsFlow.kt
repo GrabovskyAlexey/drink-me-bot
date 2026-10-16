@@ -99,18 +99,20 @@ class SettingsFlow(
         val clean = userService.getUser(userId)?.profile?.settings?.cleanChat ?: true
         // Пока язык не выбран, отмечаем тот, что определён по языку Telegram
         val current = dataLocale.resolve(userId, locale)
+        // «Авто» (язык Telegram) стоит первой кнопкой сетки 4x2, дальше флаги
+        val auto = button(
+            i18n.i18n("buttons.settings.auto", locale).let { if (dataLocale.chosen(userId) == null) "✅ $it" else it },
+            "AUTO", row = 0, col = 0,
+        )
         val flags = DataLocale.SUPPORTED_ORDERED.mapIndexed { index, code ->
             val flag = DataLocale.flag(code)
-            button(if (code == current) "✅ $flag" else flag, "SL:$code", row = index / FLAGS_PER_ROW, col = index % FLAGS_PER_ROW)
+            val position = index + 1
+            button(if (code == current) "✅ $flag" else flag, "SL:$code", row = position / FLAGS_PER_ROW, col = position % FLAGS_PER_ROW)
         }
-        // Вернуться к языку Telegram можно, только если язык выбран вручную
-        val auto = listOfNotNull(
-            button(i18n.i18n("buttons.settings.auto", locale), "AUTO", row = FLAG_ROWS).takeIf { dataLocale.chosen(userId) != null },
-        )
         val strict = filters.get(userId).strict
-        val buttons = flags + auto + listOf(
-            button(i18n.i18n("buttons.settings.clean.${if (clean) "on" else "off"}", locale), "CLEAN", row = FLAG_ROWS + auto.size),
-            button(i18n.i18n("buttons.settings.strict.${if (strict) "on" else "off"}", locale), "STRICT", row = FLAG_ROWS + auto.size + 1),
+        val buttons = listOf(auto) + flags + listOf(
+            button(i18n.i18n("buttons.settings.clean.${if (clean) "on" else "off"}", locale), "CLEAN", row = FLAG_ROWS),
+            button(i18n.i18n("buttons.settings.strict.${if (strict) "on" else "off"}", locale), "STRICT", row = FLAG_ROWS + 1),
             button(i18n.i18n("buttons.common.close", locale), "CLOSE", row = FlowInlineButton.LAST_ROW),
         )
         val model = SettingsMainModel(i18n.i18n("settings.language.$current", locale))
