@@ -56,6 +56,12 @@ data class SendPhotoAction(
     val message: FlowMessage,
 ) : FlowAction
 
+/** Перерисовывает подпись фото-сообщения, привязанного к [bindingKey] (текст шаблона, до 1024 символов; кнопки не меняются). */
+data class EditCaptionAction(
+    override val bindingKey: String,
+    val message: FlowMessage,
+) : FlowAction
+
 /** Показ места на карте (Telegram venue). */
 data class SendVenueAction(
     override val bindingKey: String?,

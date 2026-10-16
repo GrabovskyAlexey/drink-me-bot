@@ -10,6 +10,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.jdbc.datasource.init.ScriptUtils
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.postgresql.PostgreSQLContainer
+import ru.grabovsky.drinkmebot.model.CardGadget
 import ru.grabovsky.drinkmebot.model.CardIngredient
 
 /** Проверяет SQL карточки коктейля на настоящем PostgreSQL. Без Docker тесты не создаются. */
@@ -105,12 +106,30 @@ private fun ShouldSpec.defineTests() {
         card.author shouldBe "Автор"
         card.tags shouldBe listOf("крепкие", "кислые")
         card.steps shouldBe listOf("Смешай", "Налей")
-        card.gadgets shouldBe listOf("Шейкер")
+        card.gadgets shouldBe listOf(CardGadget("Шейкер"))
+        card.hasGadgetMarks shouldBe false
         card.ingredients shouldBe listOf(
-            CardIngredient("Водка Царская", "50 мл", essential = true, have = true),
-            CardIngredient("Лайм", "12.5 мл", essential = false, have = false),
-            CardIngredient("Сироп", "0.5 oz", essential = false, have = false),
+            CardIngredient("Водка Царская", "50 мл", essential = true, have = true, goodsId = 1),
+            CardIngredient("Лайм", "12.5 мл", essential = false, have = false, goodsId = 2),
+            CardIngredient("Сироп", "0.5 oz", essential = false, have = false, goodsId = 3),
         )
+    }
+
+    should("multiply ingredient quantities by the number of portions") {
+        setStock(1L, 1)
+
+        repository.find(1L, "ru", 100, portions = 4)!!.ingredients.map { it.quantity } shouldBe listOf("200 мл", "50 мл", "2 oz")
+    }
+
+    should("mark gadgets only after the user has marked some gadget") {
+        jdbc.update("INSERT INTO drink_me_bot.goods_category (goods_id, category) VALUES (5, 'GADGET') ON CONFLICT DO NOTHING")
+        setStock(1L, 5)
+
+        val card = repository.find(1L, "ru", 100)!!
+
+        card.hasGadgetMarks shouldBe true
+        card.gadgets shouldBe listOf(CardGadget("Шейкер", have = true))
+        jdbc.update("DELETE FROM drink_me_bot.goods_category WHERE goods_id = 5")
     }
 
     should("mark an essential ingredient as missing when the user does not have it") {
