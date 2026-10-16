@@ -23,9 +23,6 @@ abstract class AbstractCommand(
     val listed: Boolean = !command.hidden,
 ) : BotCommand(command.command, command.text), BotCommands {
 
-    /** Описание команды в меню для английского языка (основное - [getDescription] - русское). */
-    val descriptionEn: String = command.textEn
-
     override fun prepare(user: User, chat: Chat, arguments: Array<out String>) {
         userService.createOrUpdateUser(user)
     }
