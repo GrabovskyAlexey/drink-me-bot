@@ -125,6 +125,7 @@ class UserDataServiceJpaIT {
                 "liquibase/catalog/4.create_user_ingredient.sql",
                 "liquibase/stats/1.create_stats_tables.sql",
                 "liquibase/collections/1.create_user_cocktail.sql",
+                "liquibase/shopping/1.create_shopping_item.sql",
             ).forEach { script -> dataSource.connection.use { ScriptUtils.executeSqlScript(it, ClassPathResource(script)) } }
             val jdbc = JdbcTemplate(dataSource)
             jdbc.update("INSERT INTO drink_me_bot.lang (code) VALUES ('ru')")

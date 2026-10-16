@@ -10,6 +10,7 @@ data class CardIngredient(
     val essential: Boolean,
     val have: Boolean,
     val substitute: String? = null,
+    val goodsId: Int = 0,
 )
 
 /** Гаджет или посуда из карточки; [have] - отмечен ли у пользователя. */

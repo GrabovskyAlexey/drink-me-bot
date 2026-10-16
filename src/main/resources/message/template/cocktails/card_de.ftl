@@ -1,3 +1,4 @@
+<#if data.part != "TAIL">
 🍸 <b>${data.name?html}</b>
 <#if data.fallback>
 <i>🇺🇸 In deiner Sprache nicht verfügbar, auf Englisch angezeigt.</i>
@@ -16,6 +17,8 @@ ${line?html}
 <#if data.hasMarks>
 <i>✅ vorhanden · ❌ fehlt · • im Laden erhältlich</i>
 </#if>
+</#if>
+<#if data.part != "HEAD">
 <#if data.gadgets?has_content>
 
 <b>Zubehör</b>
@@ -27,4 +30,8 @@ ${data.gadgets?html}
 <#list data.steps as step>
 ${step?counter}. ${step?html}
 </#list>
+</#if>
+<#if data.part == "TAIL" && !data.gadgets?has_content && !data.steps?has_content>
+🍸 <b>${data.name?html}</b>
+</#if>
 </#if>

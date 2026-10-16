@@ -135,7 +135,7 @@ class TelegramFlowActionExecutor(
                     runCatching {
                         if (action.caption) {
                             val edit = EditMessageCaption.builder().chatId(user.id).messageId(action.messageId)
-                                .caption(rendered.take(MAX_CAPTION_LENGTH)).build()
+                                .caption(fitCaption(rendered)).build()
                             action.message.parseMode.telegramValue?.let { edit.parseMode = it }
                             edit.replyMarkup = markup
                             telegramClient.execute(edit)
@@ -150,16 +150,33 @@ class TelegramFlowActionExecutor(
                 }
 
                 is SendPhotoAction -> {
-                    val caption = renderMessage(action.message, locale).take(MAX_CAPTION_LENGTH)
+                    val rendered = renderMessage(action.message, locale)
                     val sendPhoto = SendPhoto.builder()
                         .chatId(user.id)
                         .photo(InputFile(action.photoFileId))
-                        .caption(caption)
+                        .caption(fitCaption(rendered))
                         .build()
                     action.message.parseMode.telegramValue?.let { sendPhoto.parseMode = it }
                     sendPhoto.replyMarkup = buildInlineMarkup(action.message.inlineButtons)
-                    val result = telegramClient.execute(sendPhoto)
-                    action.bindingKey?.let { bind(replacements, removed, it, result.messageId) }
+                    // file_id может не подойти этому боту (тестовый и боевой боты не обмениваются файлами): показываем текст без фото
+                    val messageId = try {
+                        telegramClient.execute(sendPhoto).messageId
+                    } catch (error: TelegramApiRequestException) {
+                        logger.warn { "Photo ${action.photoFileId} was not sent, falling back to text: ${error.apiResponse}" }
+                        telegramClient.execute(buildSendMessage(user.id, rendered, action.message)).messageId
+                    }
+                    action.bindingKey?.let { bind(replacements, removed, it, messageId) }
+                }
+
+                is EditCaptionAction -> {
+                    val messageId = replacements[action.bindingKey] ?: currentBindings[action.bindingKey] ?: return@forEach
+                    val edit = EditMessageCaption.builder().chatId(user.id).messageId(messageId)
+                        .caption(fitCaption(renderMessage(action.message, locale))).build()
+                    action.message.parseMode.telegramValue?.let { edit.parseMode = it }
+                    runCatching { telegramClient.execute(edit) }.onFailure {
+                        // «not modified» или сообщение стало текстовым (фото не отправилось): для flow это не ошибка
+                        logger.debug { "Caption edit skipped for message $messageId: ${it.message}" }
+                    }
                 }
 
                 is SendDocumentAction -> {
@@ -235,6 +252,13 @@ class TelegramFlowActionExecutor(
             if (error.apiResponse?.contains("message is not modified") != true) throw error
             logger.debug { "Edit skipped: message is not modified" }
         }
+    }
+
+    /** Подпись фото до [MAX_CAPTION_LENGTH] символов: лишнее отбрасывается целыми строками, чтобы не разрезать HTML-теги. */
+    private fun fitCaption(text: String): String {
+        if (text.length <= MAX_CAPTION_LENGTH) return text
+        val cut = text.take(MAX_CAPTION_LENGTH)
+        return cut.substring(0, cut.lastIndexOf('\n').takeIf { it > 0 } ?: MAX_CAPTION_LENGTH)
     }
 
     private fun renderMessage(message: FlowMessage, locale: Locale): String =

@@ -23,9 +23,11 @@ import ru.grabovsky.drinkmebot.model.GoodsRef
 import ru.grabovsky.drinkmebot.model.CocktailMarks
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailCardService
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailCollectionService
+import ru.grabovsky.drinkmebot.service.interfaces.CocktailPhotoService
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailSuggestService
 import ru.grabovsky.drinkmebot.service.interfaces.I18nService
 import ru.grabovsky.drinkmebot.service.interfaces.IngredientService
+import ru.grabovsky.drinkmebot.service.interfaces.ShoppingListService
 import ru.grabovsky.drinkmebot.service.interfaces.StatsService
 import org.telegram.telegrambots.meta.api.objects.message.MaybeInaccessibleMessage
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.AnswerCallbackAction
@@ -38,6 +40,7 @@ import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowStateHolder
 import ru.grabovsky.drinkmebot.strategy.flow.FakeCocktailFilterService
 import ru.grabovsky.drinkmebot.strategy.flow.FakeDataLocaleService
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.SendMessageAction
+import ru.grabovsky.drinkmebot.strategy.flow.core.engine.SendPhotoAction
 import java.util.Locale
 import org.telegram.telegrambots.meta.api.objects.User as TgUser
 
@@ -46,12 +49,14 @@ class CocktailsFlowTest : ShouldSpec({
     val cards = mockk<CocktailCardService>()
     val collections = mockk<CocktailCollectionService>()
     val ingredients = mockk<IngredientService>()
+    val shopping = mockk<ShoppingListService>()
+    val photos = mockk<CocktailPhotoService>()
     val i18n = object : I18nService {
         override fun i18n(code: String, locale: Locale, default: String?, vararg args: Any?) =
             if (args.isEmpty()) code else "$code(${args.joinToString(",")})"
     }
     val filters = FakeCocktailFilterService()
-    val flow = CocktailsFlow(suggestions, cards, collections, ingredients, i18n, FakeDataLocaleService(), mockk<StatsService>(relaxed = true), filters)
+    val flow = CocktailsFlow(suggestions, cards, collections, ingredients, i18n, FakeDataLocaleService(), mockk<StatsService>(relaxed = true), filters, shopping, photos)
     val ru = Locale.forLanguageTag("ru")
     val tgUser = mockk<TgUser> { every { id } returns 7L }
     val callback = mockk<CallbackQuery> { every { id } returns "cb1" }
@@ -66,7 +71,10 @@ class CocktailsFlowTest : ShouldSpec({
         (flow.onCallback(context(step), callback, data)!!.actions.first() as EditMessageAction).message
 
     beforeTest {
-        clearMocks(suggestions, cards, ingredients, collections)
+        clearMocks(suggestions, cards, ingredients, collections, shopping, photos)
+        every { photos.fileId(any()) } returns null
+        every { shopping.contained(7L, any()) } returns emptySet()
+        every { shopping.add(7L, any()) } returns 0
         filters.reset(7L)
         every { collections.nonAlcoholicCount("ru") } returns 0
         every { collections.favoritesCount(7L, "ru") } returns 0
@@ -327,6 +335,111 @@ class CocktailsFlowTest : ShouldSpec({
         val model = editedMessage("B").model as CocktailsBuyModel
 
         model.items shouldContainExactly listOf(CocktailsBuyItem("Ликёр", 7))
+    }
+
+    should("offer to add the missing essential ingredients of a card to the shopping list") {
+        every { cards.card(7L, "ru", 10) } returns CocktailCard(
+            10, "Алфа", null, emptyList(),
+            listOf(
+                CardIngredient("Водка", "50 мл", essential = true, have = true, goodsId = 1),
+                CardIngredient("Ром", "20 мл", essential = true, have = false, goodsId = 4),
+                CardIngredient("Лайм", "10 мл", essential = false, have = false, goodsId = 2),
+            ),
+            emptyList(), emptyList(),
+        )
+        every { shopping.add(7L, listOf(4)) } returns 1
+
+        val button = editedMessage("C:10:1:2", CocktailsStep.LIST).inlineButtons.single { it.payload.data.startsWith("A:") }
+        val result = flow.onCallback(context(CocktailsStep.CARD), callback, button.payload.data)!!
+
+        button.text shouldBe "buttons.shopping.add_missing(1)"
+        button.payload.data shouldBe "A:10:1:2:1"
+        verify { shopping.add(7L, listOf(4)) }
+        (result.actions.last() as AnswerCallbackAction).text shouldBe "alerts.shopping.added(1)"
+    }
+
+    should("not offer to add what is already in the shopping list") {
+        every { cards.card(7L, "ru", 10) } returns CocktailCard(
+            10, "Алфа", null, emptyList(), listOf(CardIngredient("Ром", "20 мл", essential = true, have = false, goodsId = 4)), emptyList(), emptyList(),
+        )
+        every { shopping.contained(7L, listOf(4)) } returns setOf(4)
+
+        editedMessage("C:10:1:2", CocktailsStep.LIST).inlineButtons.none { it.payload.data.startsWith("A:") } shouldBe true
+    }
+
+    should("add everything from what to buy to the shopping list") {
+        every { suggestions.whatToBuy(7L, "ru", 5) } returns listOf(BuySuggestion(GoodsRef(3, "Ликёр"), 7), BuySuggestion(GoodsRef(4, "Ром"), 2))
+        every { shopping.add(7L, listOf(3, 4)) } returns 2
+
+        editedMessage("B").inlineButtons.map { it.payload.data } shouldContainExactly listOf("BA", "M")
+        val result = flow.onCallback(context(CocktailsStep.BUY), callback, "BA")!!
+
+        verify { shopping.add(7L, listOf(3, 4)) }
+        (result.actions.last() as AnswerCallbackAction).text shouldBe "alerts.shopping.added(2)"
+    }
+
+    fun photoCard() = CocktailCard(
+        10, "Алфа", null, emptyList(), listOf(CardIngredient("Ром", "20 мл", essential = true, have = true, goodsId = 4)),
+        listOf(CardGadget("Шейкер")), listOf("Смешай"),
+    )
+
+    fun photoActions(data: String, step: CocktailsStep, withPhoto: Boolean) = flow.onCallback(
+        FlowContext(
+            tgUser, ru,
+            FlowStateHolder(step.key, CocktailsState(), mapOf(CocktailsFlow.MAIN_BINDING to 1) + if (withPhoto) mapOf(CocktailsFlow.PHOTO_BINDING to 2) else emptyMap()),
+        ),
+        callback, data,
+    )!!.actions
+
+    should("send a card with a photo as the photo with the head and a second message with the rest and the buttons") {
+        every { cards.card(7L, "ru", 10) } returns photoCard()
+        every { photos.fileId(10) } returns "FILE"
+
+        val actions = photoActions("C:10:1:0", CocktailsStep.LIST, withPhoto = false)
+
+        actions.map { it::class.simpleName } shouldContainExactly
+            listOf("DeleteMessageAction", "SendPhotoAction", "SendMessageAction", "AnswerCallbackAction")
+        val photo = actions.filterIsInstance<SendPhotoAction>().single()
+        photo.photoFileId shouldBe "FILE"
+        photo.bindingKey shouldBe CocktailsFlow.PHOTO_BINDING
+        (photo.message.model as CocktailsCardModel).part shouldBe "HEAD"
+        photo.message.inlineButtons.isEmpty() shouldBe true
+        val text = actions.filterIsInstance<SendMessageAction>().single()
+        text.bindingKey shouldBe CocktailsFlow.MAIN_BINDING
+        (text.message.model as CocktailsCardModel).part shouldBe "TAIL"
+        text.message.inlineButtons.isNotEmpty() shouldBe true
+    }
+
+    should("redraw the caption and the second message when the same card with a photo is refreshed") {
+        every { cards.card(7L, "ru", 10) } returns photoCard()
+        every { photos.fileId(10) } returns "FILE"
+        every { collections.toggleFavorite(7L, 10) } returns true
+
+        photoActions("F:10:1:0:1", CocktailsStep.CARD, withPhoto = true).map { it::class.simpleName } shouldContainExactly
+            listOf("EditCaptionAction", "EditMessageAction", "AnswerCallbackAction")
+    }
+
+    should("delete the photo when leaving a card with a photo") {
+        every { suggestions.findCocktails(7L, "ru", 1, 0, 8) } returns listOf(match(10, "Алфа"))
+
+        val actions = photoActions("S:1:0", CocktailsStep.CARD, withPhoto = true)
+
+        actions.map { it::class.simpleName } shouldContainExactly listOf("DeleteMessageAction", "EditMessageAction", "AnswerCallbackAction")
+        (actions.first() as DeleteMessageAction).bindingKey shouldBe CocktailsFlow.PHOTO_BINDING
+    }
+
+    should("send a new photo card instead of redrawing it for another random cocktail") {
+        every { collections.randomReady(7L, "ru", any()) } returns match(10, "Алфа")
+        every { cards.card(7L, "ru", 10) } returns photoCard()
+        every { photos.fileId(10) } returns "FILE"
+
+        photoActions("R", CocktailsStep.CARD, withPhoto = true).map { it::class.simpleName } shouldContainExactly
+            listOf("DeleteMessageAction", "DeleteMessageAction", "SendPhotoAction", "SendMessageAction", "AnswerCallbackAction")
+    }
+
+    should("delete the photo together with the message on close") {
+        photoActions("CLOSE", CocktailsStep.CARD, withPhoto = true).filterIsInstance<DeleteMessageAction>().map { it.bindingKey } shouldContainExactly
+            listOf(CocktailsFlow.PHOTO_BINDING, CocktailsFlow.MAIN_BINDING)
     }
 
     should("not send anything when started from another flow") {

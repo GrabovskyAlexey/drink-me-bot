@@ -39,6 +39,7 @@ class UserDataServiceImpl(
                 "autoDeleteMessages" to settings?.cleanChat,
             ),
             "ingredients" to userData.ingredientNames(userId, lang),
+            "shoppingList" to userData.shoppingItems(userId, lang),
             "favoriteCocktails" to userData.markedCocktails(userId, lang, favorite = true),
             "cookedCocktails" to userData.markedCocktails(userId, lang, favorite = false),
             "activityDays" to userData.activityDays(userId).map { it.toString() },

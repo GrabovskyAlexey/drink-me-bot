@@ -38,7 +38,7 @@ class CocktailCardRepository(
 
         val goods = jdbc.query(
             """
-            SELECT cg.kind, cg.name, cg.amount,
+            SELECT cg.kind, cg.goods_id, cg.name, cg.amount,
                    COALESCE(u.label, lower(cg.unit_code)) AS unit,
                    (g.is_essential OR (:strict AND gc.category IN (${IngredientCategory.OPTIONAL_NAMES.joinToString { "'$it'" }}))) AS is_essential,
                    (ui.goods_id IS NOT NULL) AS have,
@@ -60,7 +60,7 @@ class CocktailCardRepository(
             params,
         ) { rs, _ ->
             Row(
-                rs.getString("kind"), rs.getString("name"), quantity(rs.getBigDecimal("amount") * BigDecimal(portions), rs.getString("unit")),
+                rs.getString("kind"), rs.getInt("goods_id"), rs.getString("name"), quantity(rs.getBigDecimal("amount") * BigDecimal(portions), rs.getString("unit")),
                 rs.getBoolean("is_essential"), rs.getBoolean("have"), rs.getString("substitute_name"),
             )
         }
@@ -70,7 +70,7 @@ class CocktailCardRepository(
             name = name,
             author = author?.takeIf { it.isNotBlank() },
             tags = tags,
-            ingredients = goods.filter { it.kind == INGREDIENT }.map { CardIngredient(it.name, it.quantity, it.essential, it.have || it.substitute != null, substitute = it.substitute.takeIf { _ -> !it.have }) },
+            ingredients = goods.filter { it.kind == INGREDIENT }.map { CardIngredient(it.name, it.quantity, it.essential, it.have || it.substitute != null, substitute = it.substitute.takeIf { _ -> !it.have }, goodsId = it.goodsId) },
             gadgets = goods.filter { it.kind == GADGET }.map { CardGadget(it.name, it.have) },
             hasGadgetMarks = hasGadgetMarks(userId),
             steps = steps,
@@ -95,7 +95,7 @@ class CocktailCardRepository(
         ) ?: false
 
     /** [have] - есть сам товар, [substitute] - название отмеченной пользователем замены (если есть). */
-    private data class Row(val kind: String, val name: String, val quantity: String, val essential: Boolean, val have: Boolean, val substitute: String?)
+    private data class Row(val kind: String, val goodsId: Int, val name: String, val quantity: String, val essential: Boolean, val have: Boolean, val substitute: String?)
 
     private companion object {
         const val INGREDIENT = "ingredient"

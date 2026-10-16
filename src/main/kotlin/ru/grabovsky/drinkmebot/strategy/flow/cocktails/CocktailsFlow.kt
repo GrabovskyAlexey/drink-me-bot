@@ -11,16 +11,20 @@ import ru.grabovsky.drinkmebot.model.CocktailTagGroup
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailCardService
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailCollectionService
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailFilterService
+import ru.grabovsky.drinkmebot.service.interfaces.CocktailPhotoService
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailSuggestService
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailSuggestService.Companion.MAX_MISSING
 import ru.grabovsky.drinkmebot.service.interfaces.DataLocaleService
 import ru.grabovsky.drinkmebot.service.interfaces.I18nService
 import ru.grabovsky.drinkmebot.service.interfaces.IngredientService
+import ru.grabovsky.drinkmebot.service.interfaces.ShoppingListService
 import ru.grabovsky.drinkmebot.service.interfaces.StatsService
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.AnswerCallbackAction
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.BindMessageAction
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.DeleteMessageAction
+import ru.grabovsky.drinkmebot.strategy.flow.core.engine.EditCaptionAction
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.EditMessageAction
+import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowAction
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowCallbackPayload
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowContext
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowHandler
@@ -33,6 +37,7 @@ import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowResult
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowStartContext
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.FlowStep
 import ru.grabovsky.drinkmebot.strategy.flow.core.engine.SendMessageAction
+import ru.grabovsky.drinkmebot.strategy.flow.core.engine.SendPhotoAction
 import ru.grabovsky.drinkmebot.strategy.flow.core.support.OPEN
 import ru.grabovsky.drinkmebot.strategy.flow.core.support.PAGE_NOOP
 import ru.grabovsky.drinkmebot.strategy.flow.core.support.buildMessage
@@ -81,6 +86,8 @@ data class CocktailsCardModel(
     val hasMarks: Boolean,
     /** Карточка на запасном английском: коктейля нет на языке пользователя. */
     val fallback: Boolean = false,
+    /** Какую часть карточки рисует шаблон: `ALL`, `HEAD` (подпись фото: название и состав) или `TAIL` (оборудование и шаги). */
+    val part: String = "ALL",
 )
 
 data class CocktailsFilterModel(val active: Int)
@@ -93,7 +100,7 @@ data class CocktailsBuyModel(val items: List<CocktailsBuyItem>)
  * `/cocktails`: что можно приготовить из отмеченных ингредиентов. Одно сообщение, которое перерисовывается:
  * разделы (можно / не хватает 1 / не хватает 2) -> список коктейлей -> карточка, а также «что купить».
  * Теги-фильтры (`CocktailFilterService`) действуют на разделы и «Удиви меня»; экран выбора - `FL`, переключатель `T:<тег>`, сброс `X`.
- * Callback-кнопки: `M`, `S:<раздел>:<страница>`, `C:<id>:<раздел>:<страница>`, `F:`/`K:<id>:<раздел>:<страница>` (избранное, «готовил»), `R`, `B`.
+ * Callback-кнопки: `M`, `S:<раздел>:<страница>`, `C:<id>:<раздел>:<страница>`, `F:`/`K:<id>:<раздел>:<страница>` (избранное, «готовил»), `A:<id>:<раздел>:<страница>:<порции>` (недостающее - в список покупок), `R`, `B`, `BA` (всё из «что купить» - в список покупок).
  * Раздел: 0..2 - не хватает N ингредиентов, 10 - безалкогольные, 11 - избранное, -1 - карточка из «Удиви меня».
  */
 @Component
@@ -106,6 +113,8 @@ class CocktailsFlow(
     private val dataLocale: DataLocaleService,
     private val stats: StatsService,
     private val filters: CocktailFilterService,
+    private val shopping: ShoppingListService,
+    private val photos: CocktailPhotoService,
 ) : FlowHandler<CocktailsState> {
 
     override val key: FlowKey = FlowKeys.COCKTAILS
@@ -130,7 +139,8 @@ class CocktailsFlow(
         val state = context.state.payload
         val answer = AnswerCallbackAction(callbackQuery.id)
         val parts = data.split(':')
-        val (step, message) = when (parts[0]) {
+        val fresh = parts[0] == "R"
+        val screen = when (parts[0]) {
             OPEN -> {
                 val messageId = callbackQuery.message?.messageId ?: return null
                 return FlowResult(
@@ -138,31 +148,83 @@ class CocktailsFlow(
                     listOf(BindMessageAction(MAIN_BINDING, messageId), EditMessageAction(MAIN_BINDING, mainMessage(userId, locale)), answer),
                 )
             }
-            "M" -> CocktailsStep.MAIN to mainMessage(userId, locale)
-            "S" -> CocktailsStep.LIST to (listMessage(userId, locale, parts.intAt(1) ?: return null, parts.intAt(2) ?: 0) ?: return null)
-            "C" -> cardMessage(userId, locale, parts.intAt(1) ?: return null, parts.intAt(2) ?: 0, parts.intAt(3) ?: 0, parts.portionsAt(4)) ?: return null
+            "M" -> CocktailsStep.MAIN screen mainMessage(userId, locale)
+            "S" -> CocktailsStep.LIST screen (listMessage(userId, locale, parts.intAt(1) ?: return null, parts.intAt(2) ?: 0) ?: return null)
+            "C" -> cardScreen(userId, locale, parts.intAt(1) ?: return null, parts.intAt(2) ?: 0, parts.intAt(3) ?: 0, parts.portionsAt(4)) ?: return null
             "F", "K" -> {
                 val cocktailId = parts.intAt(1) ?: return null
                 if (parts[0] == "F") collections.toggleFavorite(userId, cocktailId) else collections.toggleCooked(userId, cocktailId)
-                cardMessage(userId, locale, cocktailId, parts.intAt(2) ?: 0, parts.intAt(3) ?: 0, parts.portionsAt(4)) ?: return null
+                cardScreen(userId, locale, cocktailId, parts.intAt(2) ?: 0, parts.intAt(3) ?: 0, parts.portionsAt(4)) ?: return null
             }
-            "R" -> randomMessage(userId, locale) ?: (CocktailsStep.MAIN to mainMessage(userId, locale))
-            "B" -> CocktailsStep.BUY to buyMessage(userId, locale)
-            "FL" -> CocktailsStep.FILTER to filterMessage(userId, locale)
+            "A" -> {
+                val cocktailId = parts.intAt(1) ?: return null
+                val section = parts.intAt(2) ?: 0
+                val page = parts.intAt(3) ?: 0
+                val portions = parts.portionsAt(4)
+                val added = shopping.add(userId, missingGoods(userId, locale, cocktailId))
+                val card = cardScreen(userId, locale, cocktailId, section, page, portions) ?: return null
+                return FlowResult(
+                    card.step.key, state,
+                    redraw(card, context.state.messageBindings, fresh = false) +
+                        AnswerCallbackAction(callbackQuery.id, i18n.i18n("alerts.shopping.added", locale, null, added)),
+                )
+            }
+            "BA" -> {
+                val added = shopping.add(userId, buySuggestions(userId, locale).map { it.goods.id })
+                return FlowResult(
+                    CocktailsStep.BUY.key, state,
+                    redraw(CocktailsStep.BUY screen buyMessage(userId, locale), context.state.messageBindings, fresh = false) +
+                        AnswerCallbackAction(callbackQuery.id, i18n.i18n("alerts.shopping.added", locale, null, added)),
+                )
+            }
+            "R" -> randomScreen(userId, locale) ?: (CocktailsStep.MAIN screen mainMessage(userId, locale))
+            "B" -> CocktailsStep.BUY screen buyMessage(userId, locale)
+            "FL" -> CocktailsStep.FILTER screen filterMessage(userId, locale)
             "T" -> {
                 val tag = CocktailTag.entries.find { it.name == parts.getOrNull(1) } ?: return null
                 filters.toggle(userId, tag)
-                CocktailsStep.FILTER to filterMessage(userId, locale)
+                CocktailsStep.FILTER screen filterMessage(userId, locale)
             }
             "X" -> {
                 filters.reset(userId)
-                CocktailsStep.FILTER to filterMessage(userId, locale)
+                CocktailsStep.FILTER screen filterMessage(userId, locale)
             }
             PAGE_NOOP -> return FlowResult(context.state.stepKey, state, listOf(answer))
-            "CLOSE" -> return FlowResult(CocktailsStep.MAIN.key, state, listOf(DeleteMessageAction(MAIN_BINDING), answer), completed = true)
+            "CLOSE" -> return FlowResult(
+                CocktailsStep.MAIN.key, state,
+                listOfNotNull(DeleteMessageAction(PHOTO_BINDING).takeIf { PHOTO_BINDING in context.state.messageBindings }) +
+                    listOf(DeleteMessageAction(MAIN_BINDING), answer),
+                completed = true,
+            )
             else -> return null
         }
-        return FlowResult(step.key, state, listOf(EditMessageAction(MAIN_BINDING, message), answer))
+        return FlowResult(screen.step.key, state, redraw(screen, context.state.messageBindings, fresh) + answer)
+    }
+
+    /** Экран: [photo] есть у карточки коктейля с фото - тогда [message] (оборудование, шаги, кнопки) идёт вторым сообщением под фото. */
+    private data class Screen(val step: CocktailsStep, val message: FlowMessage, val photo: PhotoPart? = null)
+
+    private data class PhotoPart(val fileId: String, val caption: FlowMessage)
+
+    private infix fun CocktailsStep.screen(message: FlowMessage) = Screen(this, message)
+
+    /**
+     * Действия для показа [screen] в сообщениях [bindings]. Обычный экран правит главное сообщение (фото, если оно было, удаляется).
+     * Карточка с фото при той же карточке ([fresh] = false) правит подпись и второе сообщение, иначе отправляет фото и сообщение заново.
+     */
+    private fun redraw(screen: Screen, bindings: Map<String, Int>, fresh: Boolean): List<FlowAction> {
+        val hasPhoto = PHOTO_BINDING in bindings
+        val removePhoto = listOfNotNull(DeleteMessageAction(PHOTO_BINDING).takeIf { hasPhoto })
+        val photo = screen.photo
+        return when {
+            photo == null -> removePhoto + EditMessageAction(MAIN_BINDING, screen.message)
+            hasPhoto && !fresh -> listOf(EditCaptionAction(PHOTO_BINDING, photo.caption), EditMessageAction(MAIN_BINDING, screen.message))
+            else -> removePhoto + listOf(
+                DeleteMessageAction(MAIN_BINDING),
+                SendPhotoAction(PHOTO_BINDING, photo.fileId, photo.caption),
+                SendMessageAction(MAIN_BINDING, screen.message),
+            )
+        }
     }
 
     private fun mainMessage(userId: Long, locale: Locale): FlowMessage {
@@ -225,34 +287,42 @@ class CocktailsFlow(
     }
 
     /** Случайный коктейль из раздела «можно приготовить»; `null`, если ничего не готово. */
-    private fun randomMessage(userId: Long, locale: Locale): Pair<CocktailsStep, FlowMessage>? {
+    private fun randomScreen(userId: Long, locale: Locale): Screen? {
         val match = collections.randomReady(userId, dataLocale.resolve(userId, locale), filter = filters.get(userId)) ?: return null
-        return cardMessage(userId, locale, match.cocktailId, RANDOM, 0)
+        return cardScreen(userId, locale, match.cocktailId, RANDOM, 0)
     }
 
     /**
      * Карточка коктейля; кнопка «Назад» возвращает в тот же раздел на ту же страницу ([RANDOM] - на главный экран, там же
      * кнопка «ещё один случайный»). Нет такого коктейля - возвращаем к разделу.
      */
-    private fun cardMessage(userId: Long, locale: Locale, cocktailId: Int, section: Int, page: Int, portions: Int = 1): Pair<CocktailsStep, FlowMessage>? {
+    private fun cardScreen(userId: Long, locale: Locale, cocktailId: Int, section: Int, page: Int, portions: Int = 1): Screen? {
         val card = cards.card(userId, dataLocale.resolve(userId, locale), cocktailId, filters.get(userId).strict, portions)
-            ?: return listMessage(userId, locale, section, page)?.let { CocktailsStep.LIST to it }
+            ?: return listMessage(userId, locale, section, page)?.let { CocktailsStep.LIST screen it }
         // Счётчик просмотров вторичен: сбой статистики не должен ломать показ карточки
         runCatching { stats.recordCocktailView(cocktailId) }
         val marks = collections.marks(userId, cocktailId)
         val context = "$cocktailId:$section:$page:$portions"
         val random = section == RANDOM
+        val missing = card.ingredients.filter { it.essential && !it.have && it.goodsId > 0 }.map { it.goodsId }
+        val toBuy = (missing.toSet() - shopping.contained(userId, missing)).size
         val buttons = listOfNotNull(
             FlowInlineButton(i18n.i18n("buttons.cocktails.favorite.${if (marks.favorite) "on" else "off"}", locale), callback("F:$context"), row = 0, col = 0),
             FlowInlineButton(i18n.i18n("buttons.cocktails.cooked.${if (marks.cooked) "on" else "off"}", locale), callback("K:$context"), row = 0, col = 1),
             *PORTIONS.mapIndexed { index, option ->
                 FlowInlineButton(if (option == portions) "✅ ×$option" else "×$option", callback("C:$cocktailId:$section:$page:$option"), row = 1, col = index)
             }.toTypedArray(),
-            FlowInlineButton(i18n.i18n("buttons.cocktails.random_again", locale), callback("R"), row = 2).takeIf { random },
+            FlowInlineButton(i18n.i18n("buttons.shopping.add_missing", locale, null, toBuy), callback("A:$context"), row = 2).takeIf { toBuy > 0 },
+            FlowInlineButton(i18n.i18n("buttons.cocktails.random_again", locale), callback("R"), row = 3).takeIf { random },
             if (random) backButton(locale)
             else FlowInlineButton(i18n.i18n("buttons.common.back", locale), callback("S:$section:$page"), row = FlowInlineButton.LAST_ROW),
         )
-        return CocktailsStep.CARD to simpleMessage(CocktailsStep.CARD, cardModel(card, locale), buttons)
+        val model = cardModel(card, locale)
+        val fileId = photos.fileId(cocktailId) ?: return Screen(CocktailsStep.CARD, simpleMessage(CocktailsStep.CARD, model, buttons))
+        return Screen(
+            CocktailsStep.CARD, simpleMessage(CocktailsStep.CARD, model.copy(part = "TAIL"), buttons),
+            PhotoPart(fileId, simpleMessage(CocktailsStep.CARD, model.copy(part = "HEAD"), emptyList())),
+        )
     }
 
     private fun cardModel(card: CocktailCard, locale: Locale) = CocktailsCardModel(
@@ -276,9 +346,21 @@ class CocktailsFlow(
     }
 
     private fun buyMessage(userId: Long, locale: Locale): FlowMessage {
-        val items = suggestions.whatToBuy(userId, dataLocale.resolve(userId, locale), filter = filters.get(userId)).map { CocktailsBuyItem(it.goods.name, it.unlocksCount) }
-        return simpleMessage(CocktailsStep.BUY, CocktailsBuyModel(items), listOf(backButton(locale)))
+        val suggested = buySuggestions(userId, locale)
+        val items = suggested.map { CocktailsBuyItem(it.goods.name, it.unlocksCount) }
+        val inList = shopping.contained(userId, suggested.map { it.goods.id })
+        val addAll = FlowInlineButton(i18n.i18n("buttons.shopping.add_all", locale), callback("BA"), row = 0)
+            .takeIf { suggested.any { it.goods.id !in inList } }
+        return simpleMessage(CocktailsStep.BUY, CocktailsBuyModel(items), listOfNotNull(addAll, backButton(locale)))
     }
+
+    private fun buySuggestions(userId: Long, locale: Locale) =
+        suggestions.whatToBuy(userId, dataLocale.resolve(userId, locale), filter = filters.get(userId))
+
+    /** Обязательные ингредиенты коктейля, которых у пользователя нет (даже по замене). */
+    private fun missingGoods(userId: Long, locale: Locale, cocktailId: Int): List<Int> =
+        cards.card(userId, dataLocale.resolve(userId, locale), cocktailId, filters.get(userId).strict)
+            ?.ingredients?.filter { it.essential && !it.have && it.goodsId > 0 }?.map { it.goodsId }.orEmpty()
 
     /** Теги по группам (группа - строки по три кнопки); внутри группы теги - «или», между группами - «и». */
     private fun filterMessage(userId: Long, locale: Locale): FlowMessage {
@@ -322,6 +404,7 @@ class CocktailsFlow(
 
     companion object {
         const val MAIN_BINDING = "main"
+        const val PHOTO_BINDING = "photo"
         const val PAGE_SIZE = 8
         private const val TAGS_PER_ROW = 3
 

@@ -109,9 +109,9 @@ private fun ShouldSpec.defineTests() {
         card.gadgets shouldBe listOf(CardGadget("Шейкер"))
         card.hasGadgetMarks shouldBe false
         card.ingredients shouldBe listOf(
-            CardIngredient("Водка Царская", "50 мл", essential = true, have = true),
-            CardIngredient("Лайм", "12.5 мл", essential = false, have = false),
-            CardIngredient("Сироп", "0.5 oz", essential = false, have = false),
+            CardIngredient("Водка Царская", "50 мл", essential = true, have = true, goodsId = 1),
+            CardIngredient("Лайм", "12.5 мл", essential = false, have = false, goodsId = 2),
+            CardIngredient("Сироп", "0.5 oz", essential = false, have = false, goodsId = 3),
         )
     }
 

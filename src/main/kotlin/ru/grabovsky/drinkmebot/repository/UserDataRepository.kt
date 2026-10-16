@@ -26,6 +26,20 @@ class UserDataRepository(
             String::class.java,
         )
 
+    /** Названия товаров из списка покупок на языке [lang] (иначе английские) и отметка «куплено». */
+    fun shoppingItems(userId: Long, lang: String): List<Map<String, Any>> =
+        jdbc.query(
+            """
+            SELECT coalesce(gi.name, us.name) AS name, si.bought
+            FROM drink_me_bot.shopping_item si
+            LEFT JOIN drink_me_bot.goods_i18n gi ON gi.goods_id = si.goods_id AND gi.lang = :lang
+            LEFT JOIN drink_me_bot.goods_i18n us ON us.goods_id = si.goods_id AND us.lang = 'us'
+            WHERE si.user_id = :userId
+            ORDER BY name
+            """.trimIndent(),
+            MapSqlParameterSource("userId", userId).addValue("lang", lang),
+        ) { rs, _ -> linkedMapOf<String, Any>("name" to rs.getString("name"), "bought" to rs.getBoolean("bought")) }
+
     /** Названия коктейлей, отмеченных пользователем как избранные ([favorite]) или как «уже готовил»; на языке [lang], иначе английские. */
     fun markedCocktails(userId: Long, lang: String, favorite: Boolean): List<String> =
         jdbc.queryForList(
