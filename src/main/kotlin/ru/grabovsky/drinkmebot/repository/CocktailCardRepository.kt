@@ -3,6 +3,7 @@ package ru.grabovsky.drinkmebot.repository
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
+import ru.grabovsky.drinkmebot.model.CardGadget
 import ru.grabovsky.drinkmebot.model.CardIngredient
 import ru.grabovsky.drinkmebot.model.CocktailCard
 import ru.grabovsky.drinkmebot.model.IngredientCategory
@@ -70,11 +71,22 @@ class CocktailCardRepository(
             author = author?.takeIf { it.isNotBlank() },
             tags = tags,
             ingredients = goods.filter { it.kind == INGREDIENT }.map { CardIngredient(it.name, it.quantity, it.essential, it.have || it.substitute != null, substitute = it.substitute.takeIf { _ -> !it.have }) },
-            gadgets = goods.filter { it.kind == GADGET }.map { it.name },
+            gadgets = goods.filter { it.kind == GADGET }.map { CardGadget(it.name, it.have) },
+            hasGadgetMarks = hasGadgetMarks(userId),
             steps = steps,
             fallback = shown != lang,
         )
     }
+
+    private fun hasGadgetMarks(userId: Long): Boolean =
+        jdbc.queryForObject(
+            """
+            SELECT EXISTS (SELECT 1 FROM drink_me_bot.user_ingredient ui
+                           JOIN drink_me_bot.goods_category gc ON gc.goods_id = ui.goods_id AND gc.category = 'GADGET'
+                           WHERE ui.user_id = :userId)
+            """.trimIndent(),
+            MapSqlParameterSource("userId", userId), Boolean::class.java,
+        ) ?: false
 
     private fun hasCocktail(cocktailId: Int, lang: String): Boolean =
         jdbc.queryForObject(

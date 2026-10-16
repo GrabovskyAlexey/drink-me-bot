@@ -12,6 +12,9 @@ data class CardIngredient(
     val substitute: String? = null,
 )
 
+/** Гаджет или посуда из карточки; [have] - отмечен ли у пользователя. */
+data class CardGadget(val name: String, val have: Boolean = false)
+
 /** Карточка коктейля в локали данных: состав, гаджеты и шаги приготовления. */
 data class CocktailCard(
     val id: Int,
@@ -19,8 +22,10 @@ data class CocktailCard(
     val author: String?,
     val tags: List<String>,
     val ingredients: List<CardIngredient>,
-    val gadgets: List<String>,
+    val gadgets: List<CardGadget>,
     val steps: List<String>,
     /** Коктейля нет на языке пользователя: карточка показана на запасном английском. */
     val fallback: Boolean = false,
+    /** Пользователь отметил хотя бы один гаджет: только тогда в карточке показываем, каких гаджетов не хватает. */
+    val hasGadgetMarks: Boolean = false,
 )

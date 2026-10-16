@@ -263,7 +263,7 @@ class CocktailsFlow(
             val substitute = it.substitute?.let { name -> " (${i18n.i18n("cocktails.card.substitute", locale, null, name)})" }.orEmpty()
             "${marker(it.essential, it.have)} ${it.name} — ${it.quantity}$substitute"
         },
-        gadgets = card.gadgets.joinToString(", "),
+        gadgets = card.gadgets.joinToString(", ") { if (card.hasGadgetMarks) "${if (it.have) "✅" else "❌"} ${it.name}" else it.name },
         steps = card.steps,
         hasMarks = card.ingredients.any { it.essential },
         fallback = card.fallback,

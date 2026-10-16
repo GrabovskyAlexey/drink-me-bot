@@ -18,6 +18,7 @@ import ru.grabovsky.drinkmebot.model.CocktailTag
 import ru.grabovsky.drinkmebot.model.CardIngredient
 import ru.grabovsky.drinkmebot.model.CocktailCard
 import ru.grabovsky.drinkmebot.model.CocktailMatch
+import ru.grabovsky.drinkmebot.model.CardGadget
 import ru.grabovsky.drinkmebot.model.GoodsRef
 import ru.grabovsky.drinkmebot.model.CocktailMarks
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailCardService
@@ -186,7 +187,7 @@ class CocktailsFlowTest : ShouldSpec({
                 CardIngredient("Ром", "20 мл", essential = true, have = false),
                 CardIngredient("Лайм", "10 мл", essential = false, have = false),
             ),
-            gadgets = listOf("Шейкер", "Стрейнер"),
+            gadgets = listOf(CardGadget("Шейкер", have = true), CardGadget("Стрейнер")),
             steps = listOf("Смешай"),
         )
 
@@ -271,6 +272,16 @@ class CocktailsFlowTest : ShouldSpec({
         favorite.inlineButtons.map { it.text } shouldContainExactly
             listOf("buttons.cocktails.favorite.on", "buttons.cocktails.cooked.on", "✅ ×1", "×2", "×4", "buttons.common.back")
         cooked.inlineButtons.map { it.payload.data } shouldContainExactly listOf("F:10:0:1:1", "K:10:0:1:1", "C:10:0:1:1", "C:10:0:1:2", "C:10:0:1:4", "S:0:1")
+    }
+
+    should("mark gadgets in the card when the user has marked some") {
+        every { cards.card(7L, "ru", 10) } returns CocktailCard(
+            10, "Алфа", null, emptyList(), emptyList(), listOf(CardGadget("Шейкер", have = true), CardGadget("Стрейнер")), emptyList(),
+            hasGadgetMarks = true,
+        )
+        every { collections.marks(7L, 10) } returns CocktailMarks()
+
+        (editedMessage("C:10:1:2", CocktailsStep.LIST).model as CocktailsCardModel).gadgets shouldBe "✅ Шейкер, ❌ Стрейнер"
     }
 
     should("recalculate portions, keep them across favorite toggles and ignore unknown multipliers") {
