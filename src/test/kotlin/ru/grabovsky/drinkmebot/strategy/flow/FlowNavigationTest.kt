@@ -3,6 +3,7 @@ package ru.grabovsky.drinkmebot.strategy.flow
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.ShouldSpec
 import io.kotest.matchers.shouldBe
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.every
 import io.mockk.mockk
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery
@@ -14,6 +15,7 @@ import ru.grabovsky.drinkmebot.service.interfaces.CocktailCollectionService
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailSuggestService
 import ru.grabovsky.drinkmebot.service.interfaces.I18nService
 import ru.grabovsky.drinkmebot.service.interfaces.IngredientService
+import ru.grabovsky.drinkmebot.service.BotMetrics
 import ru.grabovsky.drinkmebot.service.interfaces.CocktailPhotoService
 import ru.grabovsky.drinkmebot.service.interfaces.ShoppingListService
 import ru.grabovsky.drinkmebot.service.interfaces.StatsService
@@ -69,7 +71,7 @@ class FlowNavigationTest : ShouldSpec({
             IngredientsFlow(ingredients, i18n, FakeDataLocaleService()),
             CocktailsFlow(suggestions, mockk<CocktailCardService>(), mockk<CocktailCollectionService>(relaxed = true), ingredients, i18n, FakeDataLocaleService(), mockk<StatsService>(relaxed = true), FakeCocktailFilterService(), mockk<ShoppingListService>(), mockk<CocktailPhotoService>(relaxed = true)),
         ),
-        stateService, JacksonFlowPayloadSerializer(jacksonObjectMapper()), executor,
+        stateService, JacksonFlowPayloadSerializer(jacksonObjectMapper()), executor, BotMetrics(SimpleMeterRegistry()),
     )
 
     fun callbackFromMessage(messageId: Int) = mockk<CallbackQuery> {

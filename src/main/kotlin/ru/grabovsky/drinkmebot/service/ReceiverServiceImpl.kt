@@ -28,14 +28,23 @@ class ReceiverServiceImpl(
     private val flowEngine: FlowEngine,
     private val flowStateService: FlowStateService,
     private val telegramClient: TelegramClient,
+    private val metrics: BotMetrics,
 ) : ReceiverService {
 
     override fun execute(update: Update) {
+        val type = when {
+            update.hasCallbackQuery() -> "callback"
+            update.hasMessage() -> "message"
+            update.hasMyChatMember() -> "member"
+            else -> "other"
+        }
         try {
-            when {
-                update.hasCallbackQuery() -> processCallback(update.callbackQuery)
-                update.hasMessage() -> processMessage(update.message)
-                update.hasMyChatMember() -> processMyChatMember(update.myChatMember)
+            metrics.update(type) {
+                when (type) {
+                    "callback" -> processCallback(update.callbackQuery)
+                    "message" -> processMessage(update.message)
+                    "member" -> processMyChatMember(update.myChatMember)
+                }
             }
         } catch (error: Exception) {
             // Без этого ошибка в потоке long polling теряется, и состояние flow молча не сохраняется
