@@ -3,6 +3,7 @@ package ru.grabovsky.drinkmebot.service
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.ShouldSpec
 import io.kotest.matchers.shouldBe
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -10,7 +11,7 @@ import ru.grabovsky.drinkmebot.repository.CocktailSuggestRepository
 
 class CocktailSuggestServiceImplTest : ShouldSpec({
     val repository = mockk<CocktailSuggestRepository>(relaxed = true)
-    val service = CocktailSuggestServiceImpl(repository)
+    val service = CocktailSuggestServiceImpl(repository, BotMetrics(SimpleMeterRegistry()))
 
     should("convert page number to offset") {
         every { repository.findByMissing(7L, "ru", 1, 8, 16) } returns emptyList()

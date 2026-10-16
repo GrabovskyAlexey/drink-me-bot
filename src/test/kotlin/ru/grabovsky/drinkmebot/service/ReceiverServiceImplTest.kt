@@ -2,6 +2,7 @@ package ru.grabovsky.drinkmebot.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.core.spec.style.ShouldSpec
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -22,7 +23,7 @@ class ReceiverServiceImplTest : ShouldSpec({
     val flowEngine = mockk<FlowEngine>(relaxed = true)
     val flowStateService = mockk<FlowStateService>(relaxed = true)
     val client = mockk<TelegramClient>(relaxed = true)
-    val service = ReceiverServiceImpl(userService, ObjectMapper(), flowEngine, flowStateService, client)
+    val service = ReceiverServiceImpl(userService, ObjectMapper(), flowEngine, flowStateService, client, BotMetrics(SimpleMeterRegistry()))
 
     fun chat(chatId: Long, private: Boolean): Chat = mockk {
         every { id } returns chatId
