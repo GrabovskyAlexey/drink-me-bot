@@ -15,7 +15,7 @@ class CocktailCardRepository(
 ) {
 
     /** Карточка коктейля в локали [lang] (если на ней нет - на английском, `fallback`); `null`, если коктейля нет и на английском. */
-    fun find(userId: Long, lang: String, cocktailId: Int, strict: Boolean = false): CocktailCard? {
+    fun find(userId: Long, lang: String, cocktailId: Int, strict: Boolean = false, portions: Int = 1): CocktailCard? {
         // Коктейля нет на языке пользователя - показываем запасной английский
         val shown = if (hasCocktail(cocktailId, lang)) lang else FALLBACK_LANG
         val params = MapSqlParameterSource().addValue("userId", userId).addValue("lang", shown).addValue("id", cocktailId)
@@ -59,7 +59,7 @@ class CocktailCardRepository(
             params,
         ) { rs, _ ->
             Row(
-                rs.getString("kind"), rs.getString("name"), quantity(rs.getBigDecimal("amount"), rs.getString("unit")),
+                rs.getString("kind"), rs.getString("name"), quantity(rs.getBigDecimal("amount") * BigDecimal(portions), rs.getString("unit")),
                 rs.getBoolean("is_essential"), rs.getBoolean("have"), rs.getString("substitute_name"),
             )
         }

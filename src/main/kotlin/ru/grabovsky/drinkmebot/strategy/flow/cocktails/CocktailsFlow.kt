@@ -140,11 +140,11 @@ class CocktailsFlow(
             }
             "M" -> CocktailsStep.MAIN to mainMessage(userId, locale)
             "S" -> CocktailsStep.LIST to (listMessage(userId, locale, parts.intAt(1) ?: return null, parts.intAt(2) ?: 0) ?: return null)
-            "C" -> cardMessage(userId, locale, parts.intAt(1) ?: return null, parts.intAt(2) ?: 0, parts.intAt(3) ?: 0) ?: return null
+            "C" -> cardMessage(userId, locale, parts.intAt(1) ?: return null, parts.intAt(2) ?: 0, parts.intAt(3) ?: 0, parts.portionsAt(4)) ?: return null
             "F", "K" -> {
                 val cocktailId = parts.intAt(1) ?: return null
                 if (parts[0] == "F") collections.toggleFavorite(userId, cocktailId) else collections.toggleCooked(userId, cocktailId)
-                cardMessage(userId, locale, cocktailId, parts.intAt(2) ?: 0, parts.intAt(3) ?: 0) ?: return null
+                cardMessage(userId, locale, cocktailId, parts.intAt(2) ?: 0, parts.intAt(3) ?: 0, parts.portionsAt(4)) ?: return null
             }
             "R" -> randomMessage(userId, locale) ?: (CocktailsStep.MAIN to mainMessage(userId, locale))
             "B" -> CocktailsStep.BUY to buyMessage(userId, locale)
@@ -234,18 +234,21 @@ class CocktailsFlow(
      * Карточка коктейля; кнопка «Назад» возвращает в тот же раздел на ту же страницу ([RANDOM] - на главный экран, там же
      * кнопка «ещё один случайный»). Нет такого коктейля - возвращаем к разделу.
      */
-    private fun cardMessage(userId: Long, locale: Locale, cocktailId: Int, section: Int, page: Int): Pair<CocktailsStep, FlowMessage>? {
-        val card = cards.card(userId, dataLocale.resolve(userId, locale), cocktailId, filters.get(userId).strict)
+    private fun cardMessage(userId: Long, locale: Locale, cocktailId: Int, section: Int, page: Int, portions: Int = 1): Pair<CocktailsStep, FlowMessage>? {
+        val card = cards.card(userId, dataLocale.resolve(userId, locale), cocktailId, filters.get(userId).strict, portions)
             ?: return listMessage(userId, locale, section, page)?.let { CocktailsStep.LIST to it }
         // Счётчик просмотров вторичен: сбой статистики не должен ломать показ карточки
         runCatching { stats.recordCocktailView(cocktailId) }
         val marks = collections.marks(userId, cocktailId)
-        val context = "$cocktailId:$section:$page"
+        val context = "$cocktailId:$section:$page:$portions"
         val random = section == RANDOM
         val buttons = listOfNotNull(
             FlowInlineButton(i18n.i18n("buttons.cocktails.favorite.${if (marks.favorite) "on" else "off"}", locale), callback("F:$context"), row = 0, col = 0),
             FlowInlineButton(i18n.i18n("buttons.cocktails.cooked.${if (marks.cooked) "on" else "off"}", locale), callback("K:$context"), row = 0, col = 1),
-            FlowInlineButton(i18n.i18n("buttons.cocktails.random_again", locale), callback("R"), row = 1).takeIf { random },
+            *PORTIONS.mapIndexed { index, option ->
+                FlowInlineButton(if (option == portions) "✅ ×$option" else "×$option", callback("C:$cocktailId:$section:$page:$option"), row = 1, col = index)
+            }.toTypedArray(),
+            FlowInlineButton(i18n.i18n("buttons.cocktails.random_again", locale), callback("R"), row = 2).takeIf { random },
             if (random) backButton(locale)
             else FlowInlineButton(i18n.i18n("buttons.common.back", locale), callback("S:$section:$page"), row = FlowInlineButton.LAST_ROW),
         )
@@ -314,10 +317,16 @@ class CocktailsFlow(
 
     private fun List<String>.intAt(index: Int): Int? = getOrNull(index)?.toIntOrNull()
 
+    /** Число порций из callback-а; всё, кроме [PORTIONS], - одна порция. */
+    private fun List<String>.portionsAt(index: Int): Int = intAt(index)?.takeIf { it in PORTIONS } ?: 1
+
     companion object {
         const val MAIN_BINDING = "main"
         const val PAGE_SIZE = 8
         private const val TAGS_PER_ROW = 3
+
+        /** Доступные пересчёты порций в карточке. */
+        val PORTIONS = listOf(1, 2, 4)
 
         /** Флаг запасного (английского) языка: им помечены коктейли без перевода на язык пользователя. */
         val FALLBACK_FLAG = DataLocale.flag("us")

@@ -113,6 +113,12 @@ private fun ShouldSpec.defineTests() {
         )
     }
 
+    should("multiply ingredient quantities by the number of portions") {
+        setStock(1L, 1)
+
+        repository.find(1L, "ru", 100, portions = 4)!!.ingredients.map { it.quantity } shouldBe listOf("200 мл", "50 мл", "2 oz")
+    }
+
     should("mark an essential ingredient as missing when the user does not have it") {
         setStock(2L)
 

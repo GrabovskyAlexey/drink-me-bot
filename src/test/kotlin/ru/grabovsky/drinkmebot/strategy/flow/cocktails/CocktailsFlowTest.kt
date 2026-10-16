@@ -1,5 +1,6 @@
 package ru.grabovsky.drinkmebot.strategy.flow.cocktails
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.core.spec.style.ShouldSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
@@ -196,7 +197,7 @@ class CocktailsFlowTest : ShouldSpec({
         model.tags shouldBe "крепкие · кислые"
         model.gadgets shouldBe "Шейкер, Стрейнер"
         model.hasMarks shouldBe true
-        message.inlineButtons.map { it.payload.data } shouldContainExactly listOf("F:10:1:2", "K:10:1:2", "S:1:2")
+        message.inlineButtons.map { it.payload.data } shouldContainExactly listOf("F:10:1:2:1", "K:10:1:2:1", "C:10:1:2:1", "C:10:1:2:2", "C:10:1:2:4", "S:1:2")
         message.inlineButtons.map { it.text } shouldContain "buttons.cocktails.favorite.off"
     }
 
@@ -268,8 +269,29 @@ class CocktailsFlowTest : ShouldSpec({
         verify { collections.toggleFavorite(7L, 10) }
         verify { collections.toggleCooked(7L, 10) }
         favorite.inlineButtons.map { it.text } shouldContainExactly
-            listOf("buttons.cocktails.favorite.on", "buttons.cocktails.cooked.on", "buttons.common.back")
-        cooked.inlineButtons.map { it.payload.data } shouldContainExactly listOf("F:10:0:1", "K:10:0:1", "S:0:1")
+            listOf("buttons.cocktails.favorite.on", "buttons.cocktails.cooked.on", "✅ ×1", "×2", "×4", "buttons.common.back")
+        cooked.inlineButtons.map { it.payload.data } shouldContainExactly listOf("F:10:0:1:1", "K:10:0:1:1", "C:10:0:1:1", "C:10:0:1:2", "C:10:0:1:4", "S:0:1")
+    }
+
+    should("recalculate portions, keep them across favorite toggles and ignore unknown multipliers") {
+        every { cards.card(7L, "ru", 10, false, 2) } returns CocktailCard(10, "Алфа", null, emptyList(), emptyList(), emptyList(), emptyList())
+        every { cards.card(7L, "ru", 10, false, 1) } returns CocktailCard(10, "Алфа", null, emptyList(), emptyList(), emptyList(), emptyList())
+        every { collections.toggleFavorite(7L, 10) } returns true
+        every { collections.marks(7L, 10) } returns CocktailMarks()
+
+        val doubled = editedMessage("C:10:0:1:2", CocktailsStep.CARD)
+        val toggled = editedMessage("F:10:0:1:2", CocktailsStep.CARD)
+        editedMessage("C:10:0:1:3", CocktailsStep.CARD)
+
+        doubled.inlineButtons.map { it.text }.filter { it.contains("×") } shouldContainExactly listOf("×1", "✅ ×2", "×4")
+        toggled.inlineButtons.map { it.payload.data }.filter { it.startsWith("C:") }.first() shouldBe "C:10:0:1:1"
+        // Лимит Telegram на callback_data - 64 байта, берём худший случай: id 668, избранное, 99-я страница, ×4
+        every { cards.card(7L, "ru", 668, false, 4) } returns CocktailCard(668, "Алфа", null, emptyList(), emptyList(), emptyList(), emptyList())
+        every { collections.marks(7L, 668) } returns CocktailMarks()
+        val longest = editedMessage("C:668:11:99:4", CocktailsStep.CARD).inlineButtons.maxOf { ObjectMapper().writeValueAsString(it.payload).toByteArray().size }
+        (longest <= 64) shouldBe true
+        verify(exactly = 2) { cards.card(7L, "ru", 10, false, 2) }
+        verify(exactly = 1) { cards.card(7L, "ru", 10, false, 1) }
     }
 
     should("show a random ready cocktail with a button for another one and back to the main screen") {
@@ -279,7 +301,7 @@ class CocktailsFlowTest : ShouldSpec({
         val message = editedMessage("R")
 
         (message.model as CocktailsCardModel).name shouldBe "Алфа"
-        message.inlineButtons.map { it.payload.data } shouldContainExactly listOf("F:10:-1:0", "K:10:-1:0", "R", "M")
+        message.inlineButtons.map { it.payload.data } shouldContainExactly listOf("F:10:-1:0:1", "K:10:-1:0:1", "C:10:-1:0:1", "C:10:-1:0:2", "C:10:-1:0:4", "R", "M")
     }
 
     should("return to the main screen when nothing is ready for the random button") {
