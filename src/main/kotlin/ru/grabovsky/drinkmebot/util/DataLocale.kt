@@ -10,8 +10,8 @@ import java.util.Locale
 object DataLocale {
     const val DEFAULT = "us"
 
-    /** Порядок показа в `/settings`. */
-    val SUPPORTED_ORDERED: List<String> = listOf("ru", "ua", "us", "uk", "de", "es", "fr", "it")
+    /** Порядок показа в `/settings`. Украинский (`ua`) временно отключён: данные и перевод остались, но выбрать его нельзя. */
+    val SUPPORTED_ORDERED: List<String> = listOf("ru", "us", "uk", "de", "es", "fr", "it")
 
     val SUPPORTED: Set<String> = SUPPORTED_ORDERED.toSet()
 
@@ -26,7 +26,7 @@ object DataLocale {
     /** Локаль данных по языку интерфейса/Telegram; неизвестные языки получают английский ([DEFAULT]). */
     fun of(locale: Locale): String = when (val language = locale.language.lowercase()) {
         "en" -> "us"
-        "uk" -> "ua"
+        "uk" -> DEFAULT // украинский отключён, см. SUPPORTED_ORDERED
         in SUPPORTED -> language
         else -> DEFAULT
     }

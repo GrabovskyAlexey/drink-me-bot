@@ -1,6 +1,6 @@
 <#assign lang = (locale.language!"")?lower_case>
-<#if lang?starts_with("ru")>
-    <#include "done_ru.ftl">
+<#if ["ru", "uk", "de", "es", "fr", "it"]?seq_contains(lang)>
+    <#include "done_${lang}.ftl">
 <#else>
     <#include "done_en.ftl">
 </#if>

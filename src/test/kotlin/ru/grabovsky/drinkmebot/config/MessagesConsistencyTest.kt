@@ -9,6 +9,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Properties
 
+private val INTERFACE_LANGUAGES = listOf("ru", "en", "uk", "de", "es", "fr", "it")
+
 /** Защищает от опечаток в локализации: пропавшие ключи, расхождение языков, склеенные строки. */
 class MessagesConsistencyTest : ShouldSpec({
     fun load(name: String): Properties = Properties().apply {
@@ -24,6 +26,34 @@ class MessagesConsistencyTest : ShouldSpec({
         (en.stringPropertyNames() - ru.stringPropertyNames()).shouldBeEmpty()
         (default.stringPropertyNames() - en.stringPropertyNames()).shouldBeEmpty()
         (en.stringPropertyNames() - default.stringPropertyNames()).shouldBeEmpty()
+    }
+
+    should("translate every key into every interface language with the same placeholders") {
+        val placeholders = Regex("""\{\d+}""")
+        val problems = INTERFACE_LANGUAGES.flatMap { language ->
+            val props = load("messages_$language.properties")
+            val missing = (default.stringPropertyNames() - props.stringPropertyNames()).map { "$language: missing $it" }
+            val extra = (props.stringPropertyNames() - default.stringPropertyNames()).map { "$language: extra $it" }
+            val broken = default.stringPropertyNames().filter { it in props.stringPropertyNames() }.filter {
+                placeholders.findAll(default.getProperty(it)).map { m -> m.value }.toSet() !=
+                    placeholders.findAll(props.getProperty(it)).map { m -> m.value }.toSet()
+            }.map { "$language: placeholders of $it" }
+            val apostrophes = props.stringPropertyNames()
+                .filter { '\'' in props.getProperty(it) && placeholders.containsMatchIn(props.getProperty(it)) }
+                .map { "$language: apostrophe in $it" }
+            missing + extra + broken + apostrophes
+        }
+        problems.shouldBeEmpty()
+    }
+
+    should("have a template for every step in every interface language") {
+        val templates = Files.walk(Path.of("src/main/resources/message/template")).use { stream ->
+            stream.filter { it.toString().endsWith("_ru.ftl") }.toList()
+        }
+        val missing = templates.flatMap { ru ->
+            INTERFACE_LANGUAGES.map { language -> Path.of(ru.toString().removeSuffix("_ru.ftl") + "_$language.ftl") }
+        }.filter { !Files.exists(it) }
+        missing.shouldBeEmpty()
     }
 
     should("not contain several keys glued into one value") {
